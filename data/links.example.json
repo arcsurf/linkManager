@@ -1,0 +1,9 @@
+[
+  {
+    "id": "ejemplo1",
+    "nombre": "Ejemplo",
+    "descripcion": "Link de ejemplo, editalo o borralo desde /admin/",
+    "url": "https://example.com/",
+    "icono": "link.svg"
+  }
+]

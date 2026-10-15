@@ -1,0 +1,23 @@
+[Unit]
+Description=linkManager - administracion de links
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=www-data
+Group=www-data
+# Rutas por defecto; cambialas si tu instalación usa otras.
+Environment=LM_WEB_ROOT=/var/www/linkmanager
+Environment=LM_DATA=/var/lib/linkmanager/links.json
+Environment=LM_BACKUP_DIR=/var/backups/linkmanager
+Environment=LM_HTPASSWD=/var/lib/linkmanager/htpasswd
+Environment=LM_LISTEN=127.0.0.1:8091
+ExecStart=/usr/bin/python3 -I /opt/linkmanager/app.py
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/www/linkmanager /var/lib/linkmanager /var/backups/linkmanager
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

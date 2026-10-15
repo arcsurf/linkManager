@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administrar links</title>
+    <style>
+        body { margin: 0; font-family: Arial, sans-serif; background: #0b1a33; color: #fff; }
+        header { background: #102a47; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        header h1 { margin: 0; font-size: 22px; }
+        header nav { display: flex; gap: 16px; }
+        a { color: #66c0f4; }
+        main { max-width: 1000px; margin: 0 auto; padding: 20px 16px; }
+        .panel { background: #153b5b; border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+        h2 { margin: 0 0 12px; color: #66c0f4; font-size: 18px; }
+        h3 { margin: 16px 0 8px; font-size: 14px; color: #c8d8e8; font-weight: normal; }
+        label { display: block; margin: 10px 0 4px; font-size: 14px; color: #c8d8e8; }
+        input[type=text], input[type=url], input[type=password], select { width: 100%; box-sizing: border-box; padding: 8px; border-radius: 6px; border: 1px solid #2b5a80; background: #0b1a33; color: #fff; font-size: 14px; }
+        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+        .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 16px; }
+        .icono-box { display: flex; gap: 12px; align-items: flex-start; }
+        .icono-box > img { width: 64px; height: 64px; object-fit: contain; background: #0b1a33; border-radius: 8px; padding: 4px; flex: none; }
+        button { cursor: pointer; border: 0; border-radius: 6px; padding: 8px 14px; font-size: 14px; background: #2b5a80; color: #fff; }
+        button:hover { filter: brightness(1.2); }
+        button.primario { background: #1f8a4c; }
+        button.peligro { background: #a83232; }
+        button:disabled { opacity: .4; cursor: default; }
+        .acciones { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+        .busqueda-cab { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        .busqueda-cab button { padding: 5px 10px; font-size: 13px; }
+        #estado-busqueda { font-size: 13px; color: #c8d8e8; }
+        #resultados { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+        .opcion { background: #0b1a33; border: 2px solid transparent; border-radius: 8px; padding: 8px 4px; text-align: center; cursor: pointer; font-size: 11px; color: #c8d8e8; }
+        .opcion:hover { border-color: #2b5a80; }
+        .opcion.elegida { border-color: #1f8a4c; background: #10301f; }
+        .opcion img { width: 56px; height: 56px; object-fit: contain; display: block; margin: 0 auto 6px; }
+        .opcion .titulo { color: #fff; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        table { width: 100%; border-collapse: collapse; }
+        td { padding: 8px 6px; border-top: 1px solid #2b5a80; vertical-align: middle; font-size: 14px; }
+        td img { width: 40px; height: 40px; object-fit: contain; }
+        td.url { word-break: break-all; color: #c8d8e8; font-size: 12px; }
+        td.btns { white-space: nowrap; text-align: right; }
+        td.btns button { padding: 6px 9px; margin-left: 2px; }
+        #msg { position: fixed; bottom: 16px; right: 16px; padding: 12px 16px; border-radius: 8px; display: none; max-width: 80vw; }
+        #msg.ok { background: #1f8a4c; display: block; }
+        #msg.error { background: #a83232; display: block; }
+        @media (max-width: 640px) {
+            .row, .row3 { grid-template-columns: 1fr; }
+            td.url { display: none; }
+            td.btns { white-space: normal; }
+        }
+    </style>
+</head>
+<body>
+<header>
+    <h1>Administrar links</h1>
+    <nav>
+        <a href="#password">Cambiar contraseña</a>
+        <a href="/" target="_blank">Ver página &rarr;</a>
+    </nav>
+</header>
+<main>
+    <section class="panel">
+        <h2 id="titulo-form">Nuevo link</h2>
+        <form id="form">
+            <div class="row">
+                <div>
+                    <label for="nombre">Nombre *</label>
+                    <input type="text" id="nombre" required maxlength="300" autocomplete="off">
+                </div>
+                <div>
+                    <label for="url">URL *</label>
+                    <input type="url" id="url" required placeholder="https://servicio.ejemplo/">
+                </div>
+            </div>
+            <label for="descripcion">Descripción</label>
+            <input type="text" id="descripcion" maxlength="300">
+
+            <label for="icono">Icono</label>
+            <div class="icono-box">
+                <img id="preview" alt="">
+                <div style="flex:1">
+                    <select id="icono"></select>
+                    <label for="archivo">o subir uno propio (png, svg, jpg, webp, gif, ico &mdash; máx. 2 MB)</label>
+                    <input type="file" id="archivo" accept=".png,.svg,.jpg,.jpeg,.webp,.gif,.ico">
+                </div>
+            </div>
+
+            <div class="busqueda-cab">
+                <h3>o elegir uno de internet: <span id="estado-busqueda">escribí el nombre de la aplicación</span></h3>
+                <button type="button" id="buscar">Buscar</button>
+            </div>
+            <div id="resultados"></div>
+
+            <div class="acciones">
+                <button type="submit" class="primario" id="guardar">Agregar</button>
+                <button type="button" id="cancelar" hidden>Cancelar edición</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="panel">
+        <h2>Links actuales</h2>
+        <table><tbody id="lista"></tbody></table>
+    </section>
+
+    <section class="panel" id="password">
+        <h2>Cambiar contraseña del administrador</h2>
+        <form id="form-pass">
+            <div class="row3">
+                <div>
+                    <label for="pass-actual">Contraseña actual</label>
+                    <input type="password" id="pass-actual" required autocomplete="current-password">
+                </div>
+                <div>
+                    <label for="pass-nueva">Nueva (mín. 8 caracteres)</label>
+                    <input type="password" id="pass-nueva" required minlength="8" autocomplete="new-password">
+                </div>
+                <div>
+                    <label for="pass-repetir">Repetir nueva</label>
+                    <input type="password" id="pass-repetir" required minlength="8" autocomplete="new-password">
+                </div>
+            </div>
+            <div class="acciones">
+                <button type="submit" class="primario">Cambiar contraseña</button>
+            </div>
+        </form>
+    </section>
+</main>
+<div id="msg"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+// Origen del icono elegido: "existente" (select), "archivo" (subido) o "remoto" (internet)
+let links = [], editando = null, archivo = null, remoto = null, iconoTocado = false;
+
+function aviso(texto, tipo = "ok") {
+    const m = $("msg");
+    m.textContent = texto; m.className = tipo;
+    clearTimeout(aviso.t); aviso.t = setTimeout(() => m.className = "", 4000);
+}
+
+async function api(metodo, ruta, cuerpo) {
+    const r = await fetch("/api/" + ruta, {
+        method: metodo,
+        headers: cuerpo ? {"Content-Type": "application/json"} : {},
+        body: cuerpo ? JSON.stringify(cuerpo) : undefined,
+    });
+    const datos = await r.json().catch(() => ({error: "Respuesta inválida (" + r.status + ")"}));
+    if (!r.ok) throw new Error(datos.error || r.statusText);
+    return datos;
+}
+
+function celda(texto, clase) {
+    const td = document.createElement("td");
+    if (clase) td.className = clase;
+    td.textContent = texto;
+    return td;
+}
+
+function boton(texto, titulo, fn, clase, deshabilitado) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = texto; b.title = titulo; b.onclick = fn;
+    if (clase) b.className = clase;
+    b.disabled = !!deshabilitado;
+    return b;
+}
+
+function dibujar() {
+    const tb = $("lista");
+    tb.replaceChildren();
+    links.forEach((l, i) => {
+        const tr = document.createElement("tr");
+        const tdImg = document.createElement("td");
+        const img = document.createElement("img");
+        img.src = "/images/" + encodeURIComponent(l.icono); img.alt = "";
+        tdImg.appendChild(img);
+        const tdNombre = celda(l.nombre);
+        const small = document.createElement("div");
+        small.style.cssText = "font-size:12px;color:#c8d8e8";
+        small.textContent = l.descripcion;
+        tdNombre.appendChild(small);
+        const btns = document.createElement("td");
+        btns.className = "btns";
+        btns.append(
+            boton("↑", "Subir", () => mover(l, -1), "", i === 0),
+            boton("↓", "Bajar", () => mover(l, 1), "", i === links.length - 1),
+            boton("Editar", "Editar", () => editar(l)),
+            boton("Borrar", "Borrar", () => borrar(l), "peligro"),
+        );
+        tr.append(tdImg, tdNombre, celda(l.url, "url"), btns);
+        tb.appendChild(tr);
+    });
+}
+
+async function cargarIconos(seleccionado) {
+    const iconos = await api("GET", "iconos");
+    const s = $("icono");
+    s.replaceChildren(new Option("— elegir icono existente —", ""), ...iconos.map(n => new Option(n, n)));
+    s.value = seleccionado || "";
+    previsualizar();
+}
+
+function previsualizar() {
+    const p = $("preview");
+    if (remoto) p.src = remoto.url;
+    else if (archivo) p.src = archivo.data;
+    else if ($("icono").value) p.src = "/images/" + encodeURIComponent($("icono").value);
+    else p.removeAttribute("src");
+    document.querySelectorAll(".opcion").forEach(o => o.classList.toggle("elegida", !!remoto && o.dataset.url === remoto.url));
+}
+
+// --- Búsqueda de iconos en internet ---
+let busquedaId = 0, temporizador = null;
+
+async function buscarIconos() {
+    const q = $("nombre").value.trim();
+    const id = ++busquedaId;
+    if (q.length < 2) {
+        $("resultados").replaceChildren();
+        $("estado-busqueda").textContent = "escribí el nombre de la aplicación";
+        return;
+    }
+    $("estado-busqueda").textContent = `buscando "${q}"…`;
+    try {
+        const res = await api("GET", "buscar-icono?q=" + encodeURIComponent(q));
+        if (id !== busquedaId) return;  // llegó una búsqueda más nueva
+        $("estado-busqueda").textContent = res.length
+            ? `${res.length} opciones para "${q}" (clic para elegir)`
+            : `sin resultados para "${q}"`;
+        $("resultados").replaceChildren(...res.map(r => {
+            const d = document.createElement("div");
+            d.className = "opcion"; d.dataset.url = r.url; d.title = `${r.titulo} — ${r.fuente}`;
+            const img = document.createElement("img");
+            img.src = r.url; img.alt = r.titulo; img.loading = "lazy";
+            img.onerror = () => d.remove();
+            const t = document.createElement("div");
+            t.className = "titulo"; t.textContent = r.titulo;
+            const f = document.createElement("div");
+            f.textContent = r.fuente;
+            d.append(img, t, f);
+            d.onclick = () => {
+                remoto = remoto && remoto.url === r.url ? null : r;
+                archivo = null; $("archivo").value = ""; iconoTocado = true;
+                previsualizar();
+            };
+            return d;
+        }));
+        previsualizar();
+    } catch (e) {
+        if (id === busquedaId) $("estado-busqueda").textContent = "error: " + e.message;
+    }
+}
+
+$("nombre").oninput = () => {
+    clearTimeout(temporizador);
+    temporizador = setTimeout(buscarIconos, 600);
+};
+$("buscar").onclick = buscarIconos;
+
+// --- Alta / baja / modificación ---
+async function cargar() {
+    links = await api("GET", "links");
+    dibujar();
+}
+
+function limpiar() {
+    editando = null; archivo = null; remoto = null; iconoTocado = false;
+    $("form").reset();
+    $("resultados").replaceChildren();
+    $("estado-busqueda").textContent = "escribí el nombre de la aplicación";
+    $("titulo-form").textContent = "Nuevo link";
+    $("guardar").textContent = "Agregar";
+    $("cancelar").hidden = true;
+    previsualizar();
+}
+
+function editar(l) {
+    limpiar();
+    editando = l.id;
+    $("nombre").value = l.nombre; $("url").value = l.url; $("descripcion").value = l.descripcion;
+    $("icono").value = l.icono;
+    $("titulo-form").textContent = "Editar: " + l.nombre;
+    $("guardar").textContent = "Guardar cambios";
+    $("cancelar").hidden = false;
+    $("estado-busqueda").textContent = "pulsá Buscar para ver iconos de internet";
+    previsualizar();
+    window.scrollTo({top: 0, behavior: "smooth"});
+}
+
+async function borrar(l) {
+    if (!confirm(`¿Borrar el link "${l.nombre}"?`)) return;
+    try {
+        await api("DELETE", "links/" + l.id);
+        if (editando === l.id) limpiar();
+        aviso(`"${l.nombre}" borrado`);
+        await cargar();
+    } catch (e) { aviso(e.message, "error"); }
+}
+
+async function mover(l, dir) {
+    try { links = await api("POST", `links/${l.id}/mover`, {dir}); dibujar(); }
+    catch (e) { aviso(e.message, "error"); }
+}
+
+$("icono").onchange = () => {
+    archivo = null; remoto = null; $("archivo").value = ""; iconoTocado = true;
+    previsualizar();
+};
+
+$("archivo").onchange = () => {
+    const f = $("archivo").files[0];
+    if (!f) { archivo = null; return previsualizar(); }
+    if (f.size > 2 * 1024 * 1024) { aviso("El icono supera 2 MB", "error"); $("archivo").value = ""; return; }
+    const r = new FileReader();
+    r.onload = () => { archivo = {nombre: f.name, data: r.result}; remoto = null; iconoTocado = true; previsualizar(); };
+    r.readAsDataURL(f);
+};
+
+$("cancelar").onclick = limpiar;
+
+$("form").onsubmit = async ev => {
+    ev.preventDefault();
+    const cuerpo = {nombre: $("nombre").value, url: $("url").value, descripcion: $("descripcion").value};
+    if (remoto) cuerpo.icono_url = remoto.url;
+    else if (archivo) { cuerpo.icono_data = archivo.data; cuerpo.icono_nombre = archivo.nombre; }
+    else if ($("icono").value && (iconoTocado || !editando)) cuerpo.icono = $("icono").value;
+    if (!editando && !cuerpo.icono && !cuerpo.icono_url && !cuerpo.icono_data) {
+        return aviso("Elegí un icono: existente, subido o de internet", "error");
+    }
+    const nuevoIcono = !!(remoto || archivo);
+    $("guardar").disabled = true;
+    try {
+        if (editando) await api("PUT", "links/" + editando, cuerpo);
+        else await api("POST", "links", cuerpo);
+        aviso(editando ? "Cambios guardados" : `"${cuerpo.nombre}" agregado`);
+        limpiar();
+        if (nuevoIcono) await cargarIconos();
+        await cargar();
+    } catch (e) { aviso(e.message, "error"); }
+    finally { $("guardar").disabled = false; }
+};
+
+// --- Contraseña ---
+$("form-pass").onsubmit = async ev => {
+    ev.preventDefault();
+    const cuerpo = {actual: $("pass-actual").value, nueva: $("pass-nueva").value, repetir: $("pass-repetir").value};
+    if (cuerpo.nueva !== cuerpo.repetir) return aviso("Las contraseñas nuevas no coinciden", "error");
+    try {
+        await api("POST", "password", cuerpo);
+        $("form-pass").reset();
+        alert("Contraseña cambiada. El navegador te va a pedir la nueva contraseña en la próxima acción.");
+        location.reload();
+    } catch (e) { aviso(e.message, "error"); }
+};
+
+cargarIconos().then(cargar).catch(e => aviso(e.message, "error"));
+</script>
+</body>
+</html>

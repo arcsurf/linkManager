@@ -89,21 +89,64 @@ def backup():
             os.remove(os.path.join(BACKUP_DIR, f))
 
 
-def render(links):
+def is_section(item):
+    return item.get("tipo") == "seccion"
+
+
+def render(items):
+    """Tarjetas agrupadas: cada divisor abre una sección nueva con su título."""
     e = lambda s: html.escape(s, quote=True)
-    cards = [
-        f"""            <article class="aplicacion">
-                <a href="{e(l['url'])}" target="_blank">
-                    <img src="./images/{e(l['icono'])}" alt="{e(l['nombre'])}">
-                    <h2>{e(l['nombre'])}</h2>
-                    <p>{e(l['descripcion'])}</p>
+    blocks, cards = [], []
+
+    def flush():
+        if cards:
+            blocks.append('        <section class="aplicaciones">\n'
+                          + "\n".join(cards) + "\n        </section>")
+            cards.clear()
+
+    for it in items:
+        if is_section(it):
+            flush()
+            blocks.append('        <section class="separador">\n'
+                          f'            <h2>{e(it["titulo"])}</h2>\n'
+                          '        </section>')
+        else:
+            cards.append(
+                f"""            <article class="aplicacion">
+                <a href="{e(it['url'])}" target="_blank">
+                    <img src="./images/{e(it['icono'])}" alt="{e(it['nombre'])}">
+                    <h2>{e(it['nombre'])}</h2>
+                    <p>{e(it['descripcion'])}</p>
                 </a>
-            </article>"""
-        for l in links
-    ]
-    return (f'{START}\n        <section class="aplicaciones">\n'
-            + "\n".join(cards)
-            + f"\n        </section>\n        {END}")
+            </article>""")
+    flush()
+    return f"{START}\n" + "\n".join(blocks) + f"\n        {END}"
+
+
+def section_of(items, item):
+    """id del divisor bajo el que está item ("" = grupo inicial sin título)."""
+    current = ""
+    for it in items:
+        if it is item:
+            return current
+        if is_section(it):
+            current = it["id"]
+    return current
+
+
+def place(items, item, section_id):
+    """Mueve (o inserta) item al final del grupo de la sección indicada."""
+    if item in items:
+        items.remove(item)
+    j = 0
+    if section_id:
+        j = next((i for i, it in enumerate(items) if it["id"] == section_id and is_section(it)), None)
+        if j is None:
+            raise BadRequest("La sección elegida no existe")
+        j += 1
+    while j < len(items) and not is_section(items[j]):
+        j += 1
+    items.insert(j, item)
 
 
 def save(links):
@@ -359,6 +402,13 @@ def change_password(auth_header, body):
 
 
 # --- Validación y HTTP -------------------------------------------------------
+def validate_section(body):
+    titulo = str(body.get("titulo", "")).strip()[:200]
+    if not titulo:
+        raise BadRequest("El título de la sección es obligatorio")
+    return titulo
+
+
 def validate(body, current=None):
     out = dict(current or {})
     for k in ("nombre", "descripcion", "url"):
@@ -409,9 +459,15 @@ class Handler(BaseHTTPRequestHandler):
             if method == "GET" and parts == ["iconos"]:
                 return 200, icons()
             if method == "POST" and parts == ["links"]:
-                item = validate(self.body())
-                item["id"] = uuid.uuid4().hex[:8]
-                links.append(item)
+                body = self.body()
+                if body.get("tipo") == "seccion":
+                    item = {"id": uuid.uuid4().hex[:8], "tipo": "seccion",
+                            "titulo": validate_section(body)}
+                    links.append(item)
+                else:
+                    item = validate(body)
+                    item["id"] = uuid.uuid4().hex[:8]
+                    place(links, item, body.get("seccion") or "")
                 save(links)
                 return 201, item
             if len(parts) >= 2 and parts[0] == "links":
@@ -419,7 +475,13 @@ class Handler(BaseHTTPRequestHandler):
                 if not item:
                     return 404, {"error": "Link no encontrado"}
                 if method == "PUT" and len(parts) == 2:
-                    item.update(validate(self.body(), item))
+                    body = self.body()
+                    if is_section(item):
+                        item["titulo"] = validate_section(body)
+                    else:
+                        item.update(validate(body, item))
+                        if "seccion" in body and (body["seccion"] or "") != section_of(links, item):
+                            place(links, item, body["seccion"] or "")
                     save(links)
                     return 200, item
                 if method == "DELETE" and len(parts) == 2:

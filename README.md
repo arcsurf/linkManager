@@ -11,6 +11,9 @@ viendo igual.
 ## Funcionalidades
 
 - **ABM de links**: nombre, URL, descripción e icono. Las flechas ↑ ↓ cambian el orden.
+- **Secciones**: agregá divisores con título para agrupar los links en varias
+  secciones de la página. Cada link se asigna a una sección desde el formulario, y
+  las secciones se pueden renombrar, mover o borrar (sus links pasan a la anterior).
 - **Iconos**: podés elegir uno ya subido, subir uno propio (png, svg, jpg, webp, gif o
   ico, de hasta 2 MB) o **buscarlo en internet** mientras escribís el nombre de
   la aplicación. La búsqueda muestra varias opciones de distintas fuentes:
@@ -89,8 +92,8 @@ Todas las rutas requieren autenticación básica.
 | Método | Ruta | Descripción |
 |---|---|---|
 | GET | `/api/links` | Lista de links |
-| POST | `/api/links` | Alta: `{nombre, url, descripcion, icono \| icono_url \| icono_data+icono_nombre}` |
-| PUT | `/api/links/<id>` | Modificación (mismos campos, todos opcionales) |
+| POST | `/api/links` | Alta: `{nombre, url, descripcion, seccion, icono \| icono_url \| icono_data+icono_nombre}` o sección: `{tipo: "seccion", titulo}` |
+| PUT | `/api/links/<id>` | Modificación (mismos campos, todos opcionales; `seccion` mueve el link) o `{titulo}` para una sección |
 | DELETE | `/api/links/<id>` | Baja |
 | POST | `/api/links/<id>/mover` | Reordenar: `{dir: -1 \| 1}` |
 | GET | `/api/iconos` | Iconos disponibles en `images/` |

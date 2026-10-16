@@ -63,7 +63,8 @@ a {
 
 .separador {
     display: block;
-    width: 100%;
+    box-sizing: border-box;
+    width: auto;
     margin: 20px 20px 0 20px;
     padding: 0 20px;
 }

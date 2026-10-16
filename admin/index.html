@@ -61,6 +61,7 @@
     <nav>
         <a href="#password">Cambiar contraseña</a>
         <a href="/" target="_blank">Ver página &rarr;</a>
+        <a href="#" id="salir" title="Cerrar sesión">Salir</a>
     </nav>
 </header>
 <main>
@@ -417,6 +418,17 @@ $("form-pass").onsubmit = async ev => {
         alert("Contraseña cambiada. El navegador te va a pedir la nueva contraseña en la próxima acción.");
         location.reload();
     } catch (e) { aviso(e.message, "error"); }
+};
+
+// --- Logout ---
+// Con auth_basic el navegador guarda la contraseña: para "cerrar sesión" se la
+// reemplaza por la credencial logout:logout, válida solo para /admin/logout.txt.
+$("salir").onclick = ev => {
+    ev.preventDefault();
+    const x = new XMLHttpRequest();
+    x.open("GET", "/admin/logout.txt?" + Date.now(), true, "logout", "logout");
+    x.onloadend = () => location.replace("/");
+    x.send();
 };
 
 cargarIconos().then(cargar).catch(e => aviso(e.message, "error"));

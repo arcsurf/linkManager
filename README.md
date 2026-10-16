@@ -27,6 +27,9 @@ viendo igual.
 - **Backups automáticos**: cada cambio guarda una copia con fecha de `links.json`,
   `index.html` y `htpasswd` (por defecto se conservan las últimas 200).
 - **Cambio de contraseña** del administrador desde el panel.
+- **Salir (logout)**: como la autenticación básica deja la contraseña guardada en el
+  navegador, el botón *Salir* la reemplaza por una credencial ficticia (`logout:logout`,
+  válida solo para `/admin/logout.txt`), y el próximo acceso al panel vuelve a pedirla.
 - **Sin dependencias**: solo la biblioteca estándar de Python 3, nginx y openssl.
 
 ## Instalación (Debian / Ubuntu)

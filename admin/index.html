@@ -19,6 +19,7 @@
         .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
         .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 16px; }
         .icono-box { display: flex; gap: 12px; align-items: flex-start; }
+        .icono-box > img:not([src]) { visibility: hidden; }
         .icono-box > img { width: 64px; height: 64px; object-fit: contain; background: #0b1a33; border-radius: 8px; padding: 4px; flex: none; }
         button { cursor: pointer; border: 0; border-radius: 6px; padding: 8px 14px; font-size: 14px; background: #2b5a80; color: #fff; }
         button:hover { filter: brightness(1.2); }
@@ -41,6 +42,9 @@
         td.url { word-break: break-all; color: #c8d8e8; font-size: 12px; }
         td.btns { white-space: nowrap; text-align: right; }
         td.btns button { padding: 6px 9px; margin-left: 2px; }
+        tr.seccion td { background: #0f2f4a; color: #66c0f4; font-weight: bold; font-size: 16px; }
+        .form-seccion { display: flex; gap: 8px; margin-bottom: 12px; }
+        .form-seccion input { flex: 1; }
         #msg { position: fixed; bottom: 16px; right: 16px; padding: 12px 16px; border-radius: 8px; display: none; max-width: 80vw; }
         #msg.ok { background: #1f8a4c; display: block; }
         #msg.error { background: #a83232; display: block; }
@@ -75,6 +79,8 @@
             </div>
             <label for="descripcion">Descripción</label>
             <input type="text" id="descripcion" maxlength="300">
+            <label for="seccion">Sección</label>
+            <select id="seccion"></select>
 
             <label for="icono">Icono</label>
             <div class="icono-box">
@@ -100,7 +106,11 @@
     </section>
 
     <section class="panel">
-        <h2>Links actuales</h2>
+        <h2>Links y secciones</h2>
+        <form id="form-seccion" class="form-seccion">
+            <input type="text" id="titulo-seccion" placeholder="Título de la nueva sección (divisor)" maxlength="200" required>
+            <button type="submit" class="primario">Agregar sección</button>
+        </form>
         <table><tbody id="lista"></tbody></table>
     </section>
 
@@ -171,6 +181,23 @@ function dibujar() {
     tb.replaceChildren();
     links.forEach((l, i) => {
         const tr = document.createElement("tr");
+        const flechas = [
+            boton("↑", "Subir", () => mover(l, -1), "", i === 0),
+            boton("↓", "Bajar", () => mover(l, 1), "", i === links.length - 1),
+        ];
+        if (l.tipo === "seccion") {
+            tr.className = "seccion";
+            const td = celda("§ " + l.titulo);
+            td.colSpan = 3;
+            const btns = document.createElement("td");
+            btns.className = "btns";
+            btns.append(...flechas,
+                boton("Renombrar", "Renombrar sección", () => renombrarSeccion(l)),
+                boton("Borrar", "Borrar sección", () => borrar(l), "peligro"));
+            tr.append(td, btns);
+            tb.appendChild(tr);
+            return;
+        }
         const tdImg = document.createElement("td");
         const img = document.createElement("img");
         img.src = "/images/" + encodeURIComponent(l.icono); img.alt = "";
@@ -183,8 +210,7 @@ function dibujar() {
         const btns = document.createElement("td");
         btns.className = "btns";
         btns.append(
-            boton("↑", "Subir", () => mover(l, -1), "", i === 0),
-            boton("↓", "Bajar", () => mover(l, 1), "", i === links.length - 1),
+            ...flechas,
             boton("Editar", "Editar", () => editar(l)),
             boton("Borrar", "Borrar", () => borrar(l), "peligro"),
         );
@@ -262,11 +288,44 @@ $("buscar").onclick = buscarIconos;
 async function cargar() {
     links = await api("GET", "links");
     dibujar();
+    const s = $("seccion"), actual = s.value;
+    s.replaceChildren(new Option("Inicio (sin título)", ""),
+        ...links.filter(l => l.tipo === "seccion").map(l => new Option(l.titulo, l.id)));
+    s.value = [...s.options].some(o => o.value === actual) ? actual : "";
 }
+
+function seccionDe(item) {
+    let actual = "";
+    for (const l of links) {
+        if (l === item) return actual;
+        if (l.tipo === "seccion") actual = l.id;
+    }
+    return actual;
+}
+
+async function renombrarSeccion(l) {
+    const titulo = prompt("Nuevo título de la sección:", l.titulo);
+    if (titulo === null || !titulo.trim()) return;
+    try { await api("PUT", "links/" + l.id, {titulo}); aviso("Sección renombrada"); await cargar(); }
+    catch (e) { aviso(e.message, "error"); }
+}
+
+$("form-seccion").onsubmit = async ev => {
+    ev.preventDefault();
+    const titulo = $("titulo-seccion").value;
+    try {
+        await api("POST", "links", {tipo: "seccion", titulo});
+        $("form-seccion").reset();
+        aviso(`Sección "${titulo}" agregada al final. Elegila en "Sección" al agregar links.`);
+        await cargar();
+    } catch (e) { aviso(e.message, "error"); }
+};
 
 function limpiar() {
     editando = null; archivo = null; remoto = null; iconoTocado = false;
+    const seccion = $("seccion").value;  // se mantiene para cargar varios links seguidos
     $("form").reset();
+    $("seccion").value = seccion;
     $("resultados").replaceChildren();
     $("estado-busqueda").textContent = "escribí el nombre de la aplicación";
     $("titulo-form").textContent = "Nuevo link";
@@ -280,6 +339,7 @@ function editar(l) {
     editando = l.id;
     $("nombre").value = l.nombre; $("url").value = l.url; $("descripcion").value = l.descripcion;
     $("icono").value = l.icono;
+    $("seccion").value = seccionDe(l);
     $("titulo-form").textContent = "Editar: " + l.nombre;
     $("guardar").textContent = "Guardar cambios";
     $("cancelar").hidden = false;
@@ -289,11 +349,15 @@ function editar(l) {
 }
 
 async function borrar(l) {
-    if (!confirm(`¿Borrar el link "${l.nombre}"?`)) return;
+    const esSeccion = l.tipo === "seccion";
+    const pregunta = esSeccion
+        ? `¿Borrar la sección "${l.titulo}"? Sus links no se borran: pasan a la sección anterior.`
+        : `¿Borrar el link "${l.nombre}"?`;
+    if (!confirm(pregunta)) return;
     try {
         await api("DELETE", "links/" + l.id);
         if (editando === l.id) limpiar();
-        aviso(`"${l.nombre}" borrado`);
+        aviso(`"${esSeccion ? l.titulo : l.nombre}" borrado`);
         await cargar();
     } catch (e) { aviso(e.message, "error"); }
 }
@@ -321,7 +385,8 @@ $("cancelar").onclick = limpiar;
 
 $("form").onsubmit = async ev => {
     ev.preventDefault();
-    const cuerpo = {nombre: $("nombre").value, url: $("url").value, descripcion: $("descripcion").value};
+    const cuerpo = {nombre: $("nombre").value, url: $("url").value, descripcion: $("descripcion").value,
+                    seccion: $("seccion").value};
     if (remoto) cuerpo.icono_url = remoto.url;
     else if (archivo) { cuerpo.icono_data = archivo.data; cuerpo.icono_nombre = archivo.nombre; }
     else if ($("icono").value && (iconoTocado || !editando)) cuerpo.icono = $("icono").value;

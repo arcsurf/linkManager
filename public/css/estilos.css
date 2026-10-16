@@ -75,3 +75,34 @@ a {
     font-weight: 700;
     color: #ffffff;
 }
+
+/* Botón de acceso al panel de administración */
+header {
+    position: relative;
+}
+
+.btn-admin {
+    position: absolute;
+    top: 50%;
+    right: 20px;
+    transform: translateY(-50%);
+    padding: 8px 14px;
+    border: 1px solid #2b5a80;
+    border-radius: 6px;
+    background-color: #153b5b;
+    color: #66c0f4;
+    font-size: 14px;
+}
+
+.btn-admin:hover {
+    background-color: #1d4d75;
+}
+
+@media (max-width: 600px) {
+    .btn-admin {
+        position: static;
+        transform: none;
+        display: inline-block;
+        margin-top: 10px;
+    }
+}

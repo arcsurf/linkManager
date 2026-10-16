@@ -24,9 +24,9 @@ h1 {
 
 .aplicacion {
     background-color: #153b5b;
-    border-radius: 10px;
-    margin: 10px;
-    width: 200px;
+    border-radius: 8px;
+    margin: 8px;
+    width: 150px;
     text-align: center;
     transition: transform 0.2s;
 }
@@ -36,17 +36,21 @@ h1 {
 }
 
 .aplicacion img {
-    width: 100px;
-    height: 100px;
-    margin-top: 20px;
+    width: 75px;
+    height: 75px;
+    margin-top: 15px;
 }
 
 .aplicacion h2 {
     color: #66c0f4;
+    font-size: 18px;
+    margin: 12px 0;
 }
 
 .aplicacion p {
-    padding: 0 10px 20px 10px;
+    padding: 0 8px 15px 8px;
+    margin: 0;
+    font-size: 12px;
 }
 
 a {

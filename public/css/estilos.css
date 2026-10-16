@@ -13,6 +13,7 @@ header, footer {
 
 h1 {
     margin: 0;
+    font-size: 24px;
 }
 
 .aplicaciones {
@@ -75,10 +76,24 @@ a {
 
 .separador h2 {
     margin: 0;
-    text-align: left;
-    font-size: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    text-align: center;
+    font-size: 20px;
     font-weight: 700;
     color: #ffffff;
+}
+
+/* Líneas a ambos lados del título del divisor */
+.separador h2::before,
+.separador h2::after {
+    content: "";
+    flex: 1;
+    max-width: 240px;
+    height: 1px;
+    background-color: #2b5a80;
 }
 
 /* Botón de acceso al panel de administración */

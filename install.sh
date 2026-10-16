@@ -22,6 +22,12 @@ install -m 644 "$SRC/app.py" "$APP_DIR/app.py"
 install -d -o www-data -g www-data -m 750 "$DATA_DIR" "$BACKUP_DIR"
 install -d -o www-data -g www-data -m 755 "$WEB_ROOT" "$WEB_ROOT/images" "$WEB_ROOT/css" "$WEB_ROOT/admin"
 install -o www-data -g www-data -m 644 "$SRC/admin/index.html" "$WEB_ROOT/admin/index.html"
+echo ok > "$WEB_ROOT/admin/logout.txt"
+chown www-data:www-data "$WEB_ROOT/admin/logout.txt"
+# Credencial ficticia que usa el botón "Salir" para pisar la contraseña guardada en el navegador
+printf 'logout:%s\n' "$(printf 'logout\n' | openssl passwd -6 -stdin)" > "$DATA_DIR/htpasswd-logout"
+chown www-data:www-data "$DATA_DIR/htpasswd-logout"
+chmod 640 "$DATA_DIR/htpasswd-logout"
 [ -f "$WEB_ROOT/css/estilos.css" ] || install -o www-data -g www-data -m 644 "$SRC/public/css/estilos.css" "$WEB_ROOT/css/"
 [ -f "$WEB_ROOT/images/link.svg" ] || install -o www-data -g www-data -m 644 "$SRC/public/images/link.svg" "$WEB_ROOT/images/"
 if [ ! -f "$WEB_ROOT/index.html" ]; then

@@ -58,6 +58,13 @@
         td .sub { font-size: 12px; color: #c8d8e8; }
         #int-campos .check { margin-top: 12px; }
         #int-resultado.ok { color: #6fdc9b; }
+        #int-instrucciones { white-space: pre-line; background: #0f2f4a; border-radius: 6px; padding: 8px 10px; margin-top: 10px; }
+        textarea { width: 100%; box-sizing: border-box; padding: 8px; border-radius: 6px; border: 1px solid #2b5a80; background: #0b1a33; color: #fff; font: 12px monospace; resize: vertical; }
+        input[type=number] { width: 100%; box-sizing: border-box; padding: 8px; border-radius: 6px; border: 1px solid #2b5a80; background: #0b1a33; color: #fff; font-size: 14px; }
+        .clave-acciones { display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap; font-size: 13px; color: #6fdc9b; }
+        .clave-acciones button { padding: 5px 10px; font-size: 13px; }
+        .publica { margin-top: 8px; }
+        .publica textarea { color: #c8d8e8; }
         #int-resultado.error { color: #ff8a8a; }
         #msg.ok { background: #1f8a4c; display: block; }
         #msg.error { background: #a83232; display: block; }
@@ -173,6 +180,7 @@
                     <input type="text" id="int-nombre" required maxlength="100" placeholder="Pi-hole de casa">
                 </div>
             </div>
+            <p class="nota" id="int-instrucciones" hidden></p>
             <div id="int-campos"></div>
             <div class="acciones">
                 <button type="submit" class="primario" id="int-guardar">Agregar integración</button>
@@ -493,8 +501,11 @@ function actualizarDns() {
     $("dns-elegir").hidden = integraciones.length === 0;
     $("dns-campos").hidden = !$("dns-servidor").value;
     const dom = $("dns-dominio").value.trim().toLowerCase(), dst = $("dns-destino").value.trim().toLowerCase();
+    const tipo = esIP(dst) ? (esIPv4(dst) ? "A" : "AAAA") : "CNAME";
+    const integ = integraciones.find(i => i.id === $("dns-servidor").value);
     $("dns-tipo").textContent = !dom || !dst ? "—"
-        : `${esIP(dst) ? (esIPv4(dst) ? "registro A" : "registro AAAA") : "CNAME"}  ${dom} → ${dst}`;
+        : `${tipo === "CNAME" ? "CNAME" : "registro " + tipo}  ${dom} → ${dst}` +
+          (integ && !integ.registros.includes(tipo) ? `  (⚠ ${integ.tipo_nombre} no admite ${tipo}: usá una IP)` : "");
 }
 
 // Sugerencias a partir de la URL: si apunta a una IP, esa es el destino;
@@ -566,7 +577,11 @@ let editandoInt = null;
 async function cargarIntegraciones() {
     if (!tipos.length) {
         tipos = await api("GET", "integraciones/tipos");
-        $("int-tipo").replaceChildren(...tipos.map(t => new Option(t.nombre, t.tipo)));
+        const grupos = {};
+        for (const t of tipos) (grupos[t.grupo] ||= []).push(new Option(t.nombre, t.tipo));
+        $("int-tipo").replaceChildren(...Object.entries(grupos).map(([g, ops]) => {
+            const og = document.createElement("optgroup"); og.label = g; og.append(...ops); return og;
+        }));
         dibujarCamposInt();
     }
     integraciones = await api("GET", "integraciones");
@@ -596,18 +611,24 @@ function dibujarIntegraciones() {
             boton("Editar", "Editar", () => editarInt(i)),
             boton("Borrar", "Borrar", () => borrarInt(i), "peligro"),
         );
-        tr.append(tdNombre, celda(i.url || "", "url"), btns);
+        tr.append(tdNombre, celda(i.resumen || "", "url"), btns);
         tb.appendChild(tr);
     }
 }
 
 function tipoActual() { return tipos.find(t => t.tipo === $("int-tipo").value); }
 
-// Arma los campos según lo que pide cada tipo de servidor (URL, usuario, contraseña, API key...)
+// Arma los campos según lo que pide cada tipo de servidor (URL, usuario, contraseña, API key, SSH...)
+let claveGenerada = null;
+
 function dibujarCamposInt(valores = {}) {
     const t = tipoActual(), cont = $("int-campos");
     cont.replaceChildren();
+    claveGenerada = null;
+    $("int-instrucciones").hidden = !t;
     if (!t) return;
+    $("int-instrucciones").textContent = (t.instrucciones ? t.instrucciones + "\n" : "") +
+        "Registros que puede crear: " + t.registros.join(", ");
     for (const c of t.campos) {
         const id = "int-c-" + c.id;
         let input;
@@ -620,24 +641,33 @@ function dibujarCamposInt(valores = {}) {
         } else {
             const l = document.createElement("label");
             l.htmlFor = id; l.textContent = c.etiqueta + (c.requerido ? " *" : "");
+            cont.appendChild(l);
             if (c.tipo === "select") {
                 input = document.createElement("select");
                 input.append(...c.opciones.map(([v, txt]) => new Option(txt, v)));
                 input.value = valores[c.id] || c.defecto || c.opciones[0][0];
+            } else if (c.tipo === "ssh_key") {
+                input = document.createElement("textarea");
+                input.rows = 4; input.spellcheck = false;
+                input.placeholder = editandoInt && valores[c.id + "_cargado"]
+                    ? "Clave guardada (dejalo vacío para no cambiarla)"
+                    : "-----BEGIN OPENSSH PRIVATE KEY-----\n…";
             } else {
                 input = document.createElement("input");
-                input.type = c.tipo === "password" ? "password" : "text";
-                input.maxLength = 500; input.spellcheck = false;
+                input.type = c.tipo === "password" ? "password" : c.tipo === "number" ? "number" : "text";
+                if (c.tipo === "number") { input.min = c.min ?? ""; input.max = c.max ?? ""; }
+                else { input.maxLength = 500; input.spellcheck = false; }
                 input.autocomplete = c.tipo === "password" ? "new-password" : "off";
                 input.placeholder = c.placeholder || "";
                 if (c.secreto && editandoInt && valores[c.id + "_cargado"]) {
                     input.placeholder = "•••••• guardada (dejala vacía para no cambiarla)";
                 } else {
-                    input.value = valores[c.id] || "";
+                    input.value = valores[c.id] ?? c.defecto ?? "";
                 }
             }
             input.id = id;
-            cont.append(l, input);
+            cont.appendChild(input);
+            if (c.tipo === "ssh_key") cont.appendChild(bloqueClave(input, valores.ssh_publica));
         }
         if (c.ayuda) {
             const p = document.createElement("p"); p.className = "nota"; p.textContent = c.ayuda;
@@ -646,11 +676,52 @@ function dibujarCamposInt(valores = {}) {
     }
 }
 
+// Botón para generar un par de claves y recuadro con la clave pública para copiar al servidor
+function bloqueClave(textarea, publicaGuardada) {
+    const div = document.createElement("div");
+    const acciones = document.createElement("div"); acciones.className = "clave-acciones";
+    const estado = document.createElement("span");
+    const publica = document.createElement("div"); publica.className = "publica";
+    const mostrarPublica = (texto, titulo) => {
+        publica.replaceChildren();
+        if (!texto) return;
+        const l = document.createElement("label"); l.textContent = titulo;
+        const ta = document.createElement("textarea"); ta.rows = 2; ta.readOnly = true; ta.value = texto;
+        const copiar = boton("Copiar clave pública", "Copiar al portapapeles", async () => {
+            try { await navigator.clipboard.writeText(texto); aviso("Clave pública copiada"); }
+            catch { ta.select(); aviso("Seleccionada: copiala con Ctrl+C"); }
+        });
+        copiar.style.marginTop = "6px";
+        publica.append(l, ta, copiar);
+    };
+    const generar = boton("Generar par de claves", "Generar una clave ed25519 nueva", async () => {
+        try {
+            const k = await api("POST", "integraciones/generar-clave");
+            claveGenerada = k.privada;
+            textarea.value = ""; textarea.hidden = true;
+            estado.textContent = "✔ Clave nueva generada: se guarda al guardar la integración.";
+            mostrarPublica(k.publica, "Clave pública: agregala en ~/.ssh/authorized_keys del servidor (o en OpenWrt, System → Administration → SSH-Keys)");
+            generar.textContent = "Generar otra";
+            otra.hidden = false;
+        } catch (e) { aviso(e.message, "error"); }
+    });
+    const otra = boton("Pegar mi propia clave", "Usar una clave privada existente", () => {
+        claveGenerada = null; textarea.hidden = false; estado.textContent = ""; otra.hidden = true;
+        mostrarPublica(publicaGuardada, "Clave pública guardada");
+        generar.textContent = "Generar par de claves";
+    });
+    otra.hidden = true;
+    acciones.append(generar, otra, estado);
+    div.append(acciones, publica);
+    mostrarPublica(publicaGuardada, "Clave pública guardada: tiene que estar en authorized_keys del servidor");
+    return div;
+}
+
 function datosInt() {
     const d = {tipo: $("int-tipo").value, nombre: $("int-nombre").value};
     for (const c of tipoActual().campos) {
         const el = $("int-c-" + c.id);
-        d[c.id] = c.tipo === "checkbox" ? el.checked : el.value;
+        d[c.id] = c.tipo === "checkbox" ? el.checked : c.tipo === "ssh_key" ? (claveGenerada || el.value) : el.value;
     }
     return d;
 }

@@ -25,7 +25,9 @@ viendo igual.
   El icono que elegís se descarga al servidor, así que la página no depende de
   servicios externos.
 - **Integraciones DNS** (opcional): en la pestaña *Configuración* del panel cargás
-  tus servidores DNS (por ahora Pi-hole v5 y v6). Al dar de alta un link, elegís
+  tus servidores DNS: Pi-hole, AdGuard Home, Technitium, PowerDNS, NextDNS,
+  Control D y, por SSH, Unbound, dnsmasq, Blocky, Knot Resolver, CoreDNS, BIND9,
+  dnscrypt-proxy y OpenWrt. Al dar de alta un link, elegís
   en cuál crear su nombre: indicás el dominio con el que querés resolverlo y el
   destino. Si el destino es una IP se crea un registro A/AAAA, y si es un nombre,
   un CNAME. Con *Usar este dominio en la URL del link*, la tarjeta queda apuntando
@@ -36,7 +38,8 @@ viendo igual.
 - **Salir (logout)**: como la autenticación básica deja la contraseña guardada en el
   navegador, el botón *Salir* la reemplaza por una credencial ficticia (`logout:logout`,
   válida solo para `/admin/logout.txt`), y el próximo acceso al panel vuelve a pedirla.
-- **Sin dependencias**: solo la biblioteca estándar de Python 3, nginx y openssl.
+- **Sin dependencias**: solo la biblioteca estándar de Python 3, nginx, openssl y,
+  para las integraciones DNS por SSH, el cliente `ssh` (openssh-client).
 
 ## Instalación (Debian / Ubuntu)
 
@@ -98,24 +101,70 @@ Por variables de entorno, en `deploy/linkmanager.service`:
 ## Integraciones DNS
 
 Se administran desde el panel, en **Configuración → Integraciones DNS**: alta,
-edición, baja y *Probar conexión*. Cada tipo de servidor pide sus propios datos;
-para Pi-hole son:
+edición, baja y *Probar conexión*. Cada tipo de servidor pide sus propios datos
+(URL, usuario y contraseña, API key, token, datos SSH...) y el panel muestra sus
+instrucciones de preparación.
 
-| Campo | Descripción |
-|---|---|
-| IP o URL del servidor | `192.0.2.10`, `http://192.0.2.10` o `https://pi.hole` (sin `/admin`; con solo la IP se usa `http://`) |
-| Versión | *Detectar automáticamente* (por defecto), v6 o v5 |
-| Contraseña o API key | v6: contraseña web o *app password*. v5: token de la API (*Settings → API → Show API token*) o la contraseña web |
-| Verificar el certificado HTTPS | Desmarcalo si Pi-hole usa un certificado autofirmado |
+| Servidor | Cómo se conecta | Registros |
+|---|---|---|
+| Pi-hole v5 y v6 | API (contraseña o API key) | A, AAAA, CNAME |
+| AdGuard Home | API `/control/rewrite` (usuario y contraseña) | A, AAAA, CNAME |
+| Technitium DNS Server | API (token) en una zona del servidor | A, AAAA, CNAME |
+| PowerDNS Authoritative | API REST (API key) en una zona | A, AAAA, CNAME |
+| NextDNS | API en la nube (API key + perfil), como *Rewrites* | A, AAAA, CNAME |
+| Control D | API en la nube (token + perfil), como reglas *SPOOF* | A, AAAA, CNAME |
+| Unbound | SSH: `local-data` en un archivo de `unbound.conf.d` | A, AAAA, CNAME |
+| dnsmasq | SSH: `host-record`/`cname` en un archivo de `dnsmasq.d` | A, AAAA, CNAME |
+| Blocky | SSH: archivo hosts de `hostsFile.sources` | A, AAAA |
+| Knot Resolver | SSH: archivo hosts del módulo `hints` | A, AAAA |
+| CoreDNS | SSH: archivo del plugin `hosts` | A, AAAA |
+| BIND9 | SSH: `nsupdate` (actualización dinámica, RFC 2136) | A, AAAA, CNAME |
+| PowerDNS Recursor | SSH: archivo de `etc-hosts-file` | A, AAAA |
+| dnscrypt-proxy | SSH: archivo de `cloaking_rules` | A, AAAA, nombre* |
+| OpenWrt (adblock, adblock-lean, https-dns-proxy) | SSH: `uci` en el dnsmasq del router | A, AAAA, CNAME |
 
-Al guardar una integración, el panel prueba la conexión y muestra cuántos
-registros DNS locales y CNAME tiene el servidor.
+\* dnscrypt-proxy resuelve el nombre de destino por internet y devuelve sus IPs:
+sirve con nombres públicos, no con otros nombres del *cloaking*.
+
+### Servidores por SSH
+
+Unbound, dnsmasq, Blocky, Knot Resolver, CoreDNS, PowerDNS Recursor y
+dnscrypt-proxy no tienen una API para crear registros. linkManager entra por SSH
+y escribe sus registros **solo en un archivo propio** (por ejemplo
+`/etc/dnsmasq.d/linkmanager.conf`), sin tocar el resto de la configuración.
+Después ejecuta el comando de recarga del servicio. Si ese comando falla, restaura
+el archivo anterior y vuelve a recargar, para dejar el servicio como estaba. El
+archivo y el comando se pueden cambiar en cada integración, y cada tipo trae los
+valores habituales de Debian y Ubuntu.
+
+La clave SSH se genera desde el panel (*Generar par de claves*): copiás la clave
+pública en `~/.ssh/authorized_keys` del servidor (en OpenWrt, *System →
+Administration → SSH-Keys*). También podés pegar una clave privada propia, sin
+contraseña. La primera conexión guarda la clave del servidor en `known_hosts`,
+junto a los datos; si después cambia, la conexión se rechaza.
+
+Algunos detalles verificados:
+
+- **Knot Resolver** responde NXDOMAIN para dominios de uso especial (`.home.arpa`,
+  `.test`, `.local`...) sin mirar su archivo de hosts: usá otro dominio, por
+  ejemplo `casa.lan`.
+- **dnsmasq** y **OpenWrt**: el destino de un CNAME tiene que ser un nombre que
+  dnsmasq resuelva localmente (otro registro, `/etc/hosts` o DHCP).
+- **BIND9**: la zona tiene que aceptar actualizaciones dinámicas. Con
+  `update-policy local;` en la zona alcanza con entrar como root: linkManager usa
+  `nsupdate -l` con la clave de sesión de named. También se puede indicar un
+  archivo de clave TSIG.
+- **CoreDNS** relee su archivo solo, así que no necesita comando de recarga.
+
+Al guardar una integración, el panel prueba la conexión: según el servidor,
+muestra cuántos registros, zonas o reglas tiene, o verifica por SSH que se pueda
+escribir el archivo y que exista el comando de recarga.
 
 Las integraciones se guardan en `integraciones.json`, junto a `links.json` (se
 puede cambiar con `LM_INTEGRATIONS`). El archivo tiene permisos `600` porque
-guarda las contraseñas, y cada cambio deja un backup con fecha. La API nunca
-devuelve las contraseñas al navegador: al editar, si dejás el campo vacío se
-conserva la guardada.
+guarda contraseñas, tokens y claves privadas SSH, y cada cambio deja un backup
+con fecha. La API nunca devuelve esos secretos al navegador: al editar, si dejás
+el campo vacío, se conserva el guardado.
 
 En el alta de un link, el bloque **Registro DNS** muestra un desplegable con las
 integraciones. Si escribís una URL con IP, la IP se propone como destino. Si la
@@ -131,8 +180,6 @@ escribís con un nombre, el nombre se propone como dominio.
   panel ofrece borrarlo igual, dejando el registro en el servidor. Si el registro
   ya no estaba en el servidor, el link se borra sin error.
 - Editar el link o borrar la integración **no** modifica el servidor DNS.
-- Pi-hole: la v6 usa su API REST (`/api/config/dns/…`) y la v5, `admin/api.php`
-  (`customdns` / `customcname`).
 - Si venías de la versión que se configuraba con variables `LM_PIHOLE_*`, al
   iniciar se importan solas como una integración llamada "Pi-hole" (solo si
   todavía no hay integraciones). Después podés quitar esas variables.
@@ -141,7 +188,8 @@ escribís con un nombre, el nombre se propone como dominio.
 
 En `app.py`, sumá una entrada a `PROVIDERS` con su nombre, los tipos de registro
 que admite, los campos que pide (el panel arma el formulario con esa lista; un
-campo con `"secreto": true` nunca se devuelve al navegador) y tres funciones:
+campo con `"secreto": true` nunca se devuelve al navegador; los campos SSH comunes
+salen de `ssh_fields()`) y tres funciones:
 `add(cfg, registro)`, `delete(cfg, registro)` (devuelve `False` si el registro ya
 no existía) y `test(cfg)`.
 
@@ -158,7 +206,8 @@ Todas las rutas requieren autenticación básica.
 | POST | `/api/links/<id>/mover` | Reordenar: `{dir: -1 \| 1}` |
 | GET | `/api/iconos` | Iconos disponibles en `images/` |
 | GET | `/api/buscar-icono?q=<nombre>` | Busca iconos en internet |
-| GET | `/api/integraciones/tipos` | Tipos de servidor DNS disponibles y los campos que pide cada uno |
+| GET | `/api/integraciones/tipos` | Tipos de servidor DNS disponibles, sus instrucciones y los campos que pide cada uno |
+| POST | `/api/integraciones/generar-clave` | Genera un par de claves SSH ed25519: `{privada, publica}` |
 | GET | `/api/integraciones` | Integraciones configuradas (sin contraseñas) |
 | POST | `/api/integraciones` | Alta: `{tipo, nombre, ...campos del tipo}` |
 | PUT | `/api/integraciones/<id>` | Modificación (un campo secreto vacío conserva el guardado) |
@@ -173,6 +222,11 @@ Todas las rutas requieren autenticación básica.
   usalo solo en tu red local o poné nginx detrás de TLS (por ejemplo, Let's Encrypt
   o un proxy inverso).
 - No publiques el servicio de la API directamente. Debe quedar detrás de nginx.
+- Las integraciones DNS guardan credenciales de tus servidores y, en las de SSH,
+  claves privadas que suelen dar acceso de root. Quien controle el panel puede
+  usarlas: protegé el acceso al panel y usá una clave SSH exclusiva para
+  linkManager (la que genera el panel), que podés revocar borrándola de
+  `authorized_keys`.
 
 ## Restaurar un backup
 

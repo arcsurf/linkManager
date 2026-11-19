@@ -14,7 +14,7 @@ SRC=$(cd "$(dirname "$0")" && pwd)
 
 echo "==> Instalando dependencias"
 apt-get update -q
-DEBIAN_FRONTEND=noninteractive apt-get install -yq nginx python3 openssl
+DEBIAN_FRONTEND=noninteractive apt-get install -yq nginx python3 openssl openssh-client
 
 echo "==> Copiando la aplicación"
 install -d -m 755 "$APP_DIR"

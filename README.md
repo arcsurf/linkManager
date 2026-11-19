@@ -24,12 +24,12 @@ viendo igual.
 
   El icono que elegís se descarga al servidor, así que la página no depende de
   servicios externos.
-- **DNS en Pi-hole** (opcional): al dar de alta un link podés crear también su
-  registro DNS local en Pi-hole. Indicás el dominio con el que querés resolverlo y
-  el destino: si es una IP se crea un registro A/AAAA, y si es un nombre, un CNAME.
-  Con *Usar este dominio en la URL del link*, la tarjeta queda apuntando al nombre
-  nuevo en lugar de a la IP. Funciona con Pi-hole v5 y v6 (ver
-  [Integración con Pi-hole](#integración-con-pi-hole)).
+- **Integraciones DNS** (opcional): en la pestaña *Configuración* del panel cargás
+  tus servidores DNS (por ahora Pi-hole v5 y v6). Al dar de alta un link, elegís
+  en cuál crear su nombre: indicás el dominio con el que querés resolverlo y el
+  destino. Si el destino es una IP se crea un registro A/AAAA, y si es un nombre,
+  un CNAME. Con *Usar este dominio en la URL del link*, la tarjeta queda apuntando
+  al nombre nuevo en lugar de a la IP (ver [Integraciones DNS](#integraciones-dns)).
 - **Backups automáticos**: cada cambio guarda una copia con fecha de `links.json`,
   `index.html` y `htpasswd` (por defecto se conservan las últimas 200).
 - **Cambio de contraseña** del administrador desde el panel.
@@ -93,36 +93,51 @@ Por variables de entorno, en `deploy/linkmanager.service`:
 | `LM_HTPASSWD` | `/var/lib/linkmanager/htpasswd` |
 | `LM_LISTEN` | `127.0.0.1:8091` |
 | `LM_BACKUPS_TO_KEEP` | `200` |
+| `LM_INTEGRATIONS` | `integraciones.json` en la carpeta de `LM_DATA` |
 
-## Integración con Pi-hole
+## Integraciones DNS
 
-Es opcional. Se configura en `/etc/linkmanager/pihole.env` (el instalador lo crea
-a partir de `deploy/pihole.env.example`, con permisos `600` porque guarda la
-contraseña) y systemd lo carga al iniciar el servicio:
+Se administran desde el panel, en **Configuración → Integraciones DNS**: alta,
+edición, baja y *Probar conexión*. Cada tipo de servidor pide sus propios datos;
+para Pi-hole son:
 
-| Variable | Descripción |
+| Campo | Descripción |
 |---|---|
-| `LM_PIHOLE_URL` | URL base de Pi-hole, sin `/admin` (por ejemplo `http://192.0.2.10`) |
-| `LM_PIHOLE_PASSWORD` | v6: contraseña web o *app password*. v5: token de la API (*Settings → API → Show API token*) o la contraseña web |
-| `LM_PIHOLE_VERSION` | `auto` (por defecto), `5` o `6` |
-| `LM_PIHOLE_VERIFY_TLS` | `0` para aceptar un certificado autofirmado (por defecto `1`) |
+| IP o URL del servidor | `192.0.2.10`, `http://192.0.2.10` o `https://pi.hole` (sin `/admin`; con solo la IP se usa `http://`) |
+| Versión | *Detectar automáticamente* (por defecto), v6 o v5 |
+| Contraseña o API key | v6: contraseña web o *app password*. v5: token de la API (*Settings → API → Show API token*) o la contraseña web |
+| Verificar el certificado HTTPS | Desmarcalo si Pi-hole usa un certificado autofirmado |
 
-```bash
-sudo nano /etc/linkmanager/pihole.env
-sudo systemctl restart linkmanager
-```
+Al guardar una integración, el panel prueba la conexión y muestra cuántos
+registros DNS locales y CNAME tiene el servidor.
 
-Con la integración activa, el formulario de alta muestra el bloque **DNS en
-Pi-hole**. Si escribís una URL con IP, la IP se propone como destino. Si la
+Las integraciones se guardan en `integraciones.json`, junto a `links.json` (se
+puede cambiar con `LM_INTEGRATIONS`). El archivo tiene permisos `600` porque
+guarda las contraseñas, y cada cambio deja un backup con fecha. La API nunca
+devuelve las contraseñas al navegador: al editar, si dejás el campo vacío se
+conserva la guardada.
+
+En el alta de un link, el bloque **Registro DNS** muestra un desplegable con las
+integraciones. Si escribís una URL con IP, la IP se propone como destino. Si la
 escribís con un nombre, el nombre se propone como dominio.
 
-- Primero se crea el registro en Pi-hole y después el link. Si Pi-hole rechaza el
-  registro (por ejemplo, porque el dominio ya existe), el link no se crea y el
-  panel muestra el error.
+- Primero se crea el registro en el servidor DNS y después el link. Si el servidor
+  rechaza el registro (por ejemplo, porque el dominio ya existe), el link no se
+  crea y el panel muestra el error.
 - El registro queda guardado en el link (`dns` en `links.json`). Borrar o editar
-  el link **no** modifica Pi-hole: eso se hace desde Pi-hole.
-- La versión de Pi-hole se detecta sola: la v6 usa su API REST (`/api/config/dns/…`)
-  y la v5, `admin/api.php` (`customdns` / `customcname`).
+  el link, o borrar la integración, **no** modifica el servidor DNS.
+- Pi-hole: la v6 usa su API REST (`/api/config/dns/…`) y la v5, `admin/api.php`
+  (`customdns` / `customcname`).
+- Si venías de la versión que se configuraba con variables `LM_PIHOLE_*`, al
+  iniciar se importan solas como una integración llamada "Pi-hole" (solo si
+  todavía no hay integraciones). Después podés quitar esas variables.
+
+### Agregar otro tipo de servidor DNS
+
+En `app.py`, sumá una entrada a `PROVIDERS` con su nombre, los tipos de registro
+que admite, los campos que pide (el panel arma el formulario con esa lista; un
+campo con `"secreto": true` nunca se devuelve al navegador) y dos funciones:
+`add(cfg, registro)` y `test(cfg)`.
 
 ## API
 
@@ -131,13 +146,19 @@ Todas las rutas requieren autenticación básica.
 | Método | Ruta | Descripción |
 |---|---|---|
 | GET | `/api/links` | Lista de links |
-| POST | `/api/links` | Alta: `{nombre, url, descripcion, seccion, icono \| icono_url \| icono_data+icono_nombre, dns?}` o sección: `{tipo: "seccion", titulo}`. `dns` opcional: `{dominio, destino, usar_en_url}` |
+| POST | `/api/links` | Alta: `{nombre, url, descripcion, seccion, icono \| icono_url \| icono_data+icono_nombre, dns?}` o sección: `{tipo: "seccion", titulo}`. `dns` opcional: `{integracion, dominio, destino, usar_en_url}` |
 | PUT | `/api/links/<id>` | Modificación (mismos campos, todos opcionales; `seccion` mueve el link) o `{titulo}` para una sección |
 | DELETE | `/api/links/<id>` | Baja |
 | POST | `/api/links/<id>/mover` | Reordenar: `{dir: -1 \| 1}` |
 | GET | `/api/iconos` | Iconos disponibles en `images/` |
 | GET | `/api/buscar-icono?q=<nombre>` | Busca iconos en internet |
-| GET | `/api/pihole` | `{configurado}`: si la integración con Pi-hole está activa |
+| GET | `/api/integraciones/tipos` | Tipos de servidor DNS disponibles y los campos que pide cada uno |
+| GET | `/api/integraciones` | Integraciones configuradas (sin contraseñas) |
+| POST | `/api/integraciones` | Alta: `{tipo, nombre, ...campos del tipo}` |
+| PUT | `/api/integraciones/<id>` | Modificación (un campo secreto vacío conserva el guardado) |
+| DELETE | `/api/integraciones/<id>` | Baja |
+| POST | `/api/integraciones/<id>/probar` | Prueba la conexión de una integración guardada |
+| POST | `/api/integraciones/probar` | Prueba datos sin guardarlos (`{id}` opcional para usar la contraseña guardada) |
 | POST | `/api/password` | `{actual, nueva, repetir}` |
 
 ## Seguridad

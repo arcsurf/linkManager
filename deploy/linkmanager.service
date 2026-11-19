@@ -12,6 +12,8 @@ Environment=LM_DATA=/var/lib/linkmanager/links.json
 Environment=LM_BACKUP_DIR=/var/backups/linkmanager
 Environment=LM_HTPASSWD=/var/lib/linkmanager/htpasswd
 Environment=LM_LISTEN=127.0.0.1:8091
+# Integración opcional con Pi-hole (ver deploy/pihole.env.example)
+EnvironmentFile=-/etc/linkmanager/pihole.env
 ExecStart=/usr/bin/python3 -I /opt/linkmanager/app.py
 Restart=on-failure
 NoNewPrivileges=true

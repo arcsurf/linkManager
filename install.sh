@@ -45,6 +45,10 @@ if [ ! -f "$DATA_DIR/htpasswd" ]; then
     chmod 640 "$DATA_DIR/htpasswd"
 fi
 
+# Configuración opcional de Pi-hole: solo root la lee (tiene la contraseña)
+install -d -m 755 /etc/linkmanager
+[ -f /etc/linkmanager/pihole.env ] || install -m 600 "$SRC/deploy/pihole.env.example" /etc/linkmanager/pihole.env
+
 echo "==> Configurando systemd y nginx"
 install -m 644 "$SRC/deploy/linkmanager.service" /etc/systemd/system/linkmanager.service
 if [ ! -f /etc/nginx/sites-available/linkmanager ]; then

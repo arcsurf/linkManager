@@ -7,20 +7,26 @@
 - Busca iconos en internet (dashboard-icons, selfh.st, Simple Icons y
   Wikimedia Commons) y los descarga al elegirlos.
 - Permite cambiar la contraseña del panel (archivo htpasswd que lee nginx).
+- Opcionalmente crea en Pi-hole (v5 o v6) el registro DNS local del link nuevo:
+  un registro A/AAAA si el destino es una IP, o un CNAME si es un nombre.
 
 Solo usa la biblioteca estándar de Python. La autenticación la hace nginx
 (auth_basic); este servicio debe escuchar únicamente en localhost.
 """
 import base64
+import hashlib
 import hmac
 import html
+import ipaddress
 import json
 import os
 import re
 import shutil
+import ssl
 import subprocess
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
@@ -54,6 +60,12 @@ SELFHST_ICONS = "https://cdn.jsdelivr.net/gh/selfhst/icons"
 SIMPLE_ICONS_DATA = "https://cdn.jsdelivr.net/npm/simple-icons/data/simple-icons.json"
 COMMONS_API = "https://commons.wikimedia.org/w/api.php"
 INDEX_TTL = 24 * 3600
+
+# Integración con Pi-hole (opcional: sin LM_PIHOLE_URL queda desactivada).
+PIHOLE_URL = os.environ.get("LM_PIHOLE_URL", "").strip().rstrip("/")
+PIHOLE_PASSWORD = os.environ.get("LM_PIHOLE_PASSWORD", "")
+PIHOLE_VERSION = os.environ.get("LM_PIHOLE_VERSION", "auto").strip()  # auto | 5 | 6
+PIHOLE_VERIFY_TLS = os.environ.get("LM_PIHOLE_VERIFY_TLS", "1") != "0"
 
 lock = threading.Lock()
 
@@ -401,6 +413,139 @@ def change_password(auth_header, body):
     return {"ok": True, "usuario": user}
 
 
+# --- Pi-hole -----------------------------------------------------------------
+_LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+HOSTNAME_RE = re.compile(rf"(?:{_LABEL}\.)*{_LABEL}")
+_pihole_detected = None
+
+
+def pihole_enabled():
+    return bool(PIHOLE_URL and PIHOLE_PASSWORD)
+
+
+def valid_hostname(name):
+    return len(name) <= 253 and HOSTNAME_RE.fullmatch(name) is not None
+
+
+def validate_dns(dns):
+    """Normaliza {dominio, destino, usar_en_url} y decide el tipo de registro."""
+    if not isinstance(dns, dict):
+        raise BadRequest("Datos de DNS inválidos")
+    if not pihole_enabled():
+        raise BadRequest("La integración con Pi-hole no está configurada")
+    dominio = str(dns.get("dominio", "")).strip().lower().rstrip(".")
+    destino = str(dns.get("destino", "")).strip().lower().rstrip(".")
+    if not dominio or not destino:
+        raise BadRequest("Para el DNS completá el dominio y la IP o nombre de destino")
+    if not valid_hostname(dominio):
+        raise BadRequest(f"Dominio inválido: {dominio}")
+    try:
+        ip = ipaddress.ip_address(destino)
+        tipo, destino = ("A" if ip.version == 4 else "AAAA"), str(ip)
+    except ValueError:
+        if not valid_hostname(destino):
+            raise BadRequest(f"Destino inválido (no es IP ni nombre): {destino}")
+        if destino == dominio:
+            raise BadRequest("El CNAME no puede apuntar a sí mismo")
+        tipo = "CNAME"
+    return {"tipo": tipo, "dominio": dominio, "destino": destino,
+            "usar_en_url": bool(dns.get("usar_en_url"))}
+
+
+def pihole_request(method, path, body=None, headers=None):
+    """Devuelve (status, json o None). Los errores HTTP también se devuelven."""
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(PIHOLE_URL + path, data=data, method=method,
+                                 headers={"User-Agent": USER_AGENT, **(headers or {})})
+    if data is not None:
+        req.add_header("Content-Type", "application/json")
+    ctx = None
+    if PIHOLE_URL.startswith("https://") and not PIHOLE_VERIFY_TLS:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE
+    try:
+        with urllib.request.urlopen(req, timeout=15, context=ctx) as r:
+            status, raw = r.status, r.read(1024 * 1024)
+    except urllib.error.HTTPError as ex:
+        status, raw = ex.code, ex.read(1024 * 1024)
+    except (urllib.error.URLError, OSError) as ex:
+        raise BadRequest(f"Pi-hole: no se pudo conectar ({getattr(ex, 'reason', ex)})")
+    try:
+        return status, json.loads(raw)
+    except ValueError:
+        return status, raw.decode("utf-8", "replace").strip()
+
+
+def pihole_version():
+    global _pihole_detected
+    if PIHOLE_VERSION in ("5", "6"):
+        return PIHOLE_VERSION
+    if not _pihole_detected:
+        # v6 responde JSON con "session" en /api/auth; v5 no tiene esa ruta.
+        _, res = pihole_request("GET", "/api/auth")
+        _pihole_detected = "6" if isinstance(res, dict) and "session" in res else "5"
+    return _pihole_detected
+
+
+def pihole_add_v5(rec):
+    pw = PIHOLE_PASSWORD
+    # El token de la API v5 es el hash doble SHA-256 de la contraseña web.
+    token = pw.lower() if re.fullmatch(r"[0-9a-fA-F]{64}", pw) else \
+        hashlib.sha256(hashlib.sha256(pw.encode()).hexdigest().encode()).hexdigest()
+    if rec["tipo"] == "CNAME":
+        q = {"customcname": "", "action": "add", "domain": rec["dominio"], "target": rec["destino"]}
+    else:
+        q = {"customdns": "", "action": "add", "domain": rec["dominio"], "ip": rec["destino"]}
+    q["auth"] = token
+    status, res = pihole_request("GET", "/admin/api.php?" + urllib.parse.urlencode(q))
+    if isinstance(res, dict) and res.get("success"):
+        return
+    if isinstance(res, dict):
+        msg = html.unescape(str(res.get("message") or "error desconocido"))
+    elif not res or "Not authorized" in str(res):  # sin auth válido v5 responde []
+        msg = "token o contraseña incorrectos"
+    else:
+        msg = f"respuesta inesperada (HTTP {status})"
+    raise BadRequest(f"Pi-hole: {msg}")
+
+
+def pihole_add_v6(rec):
+    status, res = pihole_request("POST", "/api/auth", {"password": PIHOLE_PASSWORD})
+    sid = res.get("session", {}).get("sid") if isinstance(res, dict) else None
+    if not sid:
+        raise BadRequest("Pi-hole: contraseña incorrecta o API no disponible"
+                         f" (HTTP {status})")
+    auth = {"X-FTL-SID": sid}
+    try:
+        if rec["tipo"] == "CNAME":
+            item = f"{rec['dominio']},{rec['destino']}"
+            path = "/api/config/dns/cnameRecords/"
+        else:
+            item = f"{rec['destino']} {rec['dominio']}"
+            path = "/api/config/dns/hosts/"
+        status, res = pihole_request("PUT", path + urllib.parse.quote(item, safe=""), headers=auth)
+        if status >= 300:
+            err = res.get("error", {}) if isinstance(res, dict) else {}
+            detalle = ": ".join(str(x) for x in (err.get("message"), err.get("hint")) if x)
+            raise BadRequest(f"Pi-hole: {detalle or f'error HTTP {status}'}")
+    finally:
+        try:  # Libera la sesión: Pi-hole v6 limita las sesiones simultáneas.
+            pihole_request("DELETE", "/api/auth", headers=auth)
+        except BadRequest:
+            pass
+
+
+def pihole_add(rec):
+    (pihole_add_v6 if pihole_version() == "6" else pihole_add_v5)(rec)
+
+
+def url_with_host(url, host):
+    """Reemplaza el host de la URL conservando esquema, puerto, ruta y query."""
+    u = urllib.parse.urlsplit(url)
+    netloc = host + (f":{u.port}" if u.port else "")
+    return urllib.parse.urlunsplit(u._replace(netloc=netloc))
+
+
 # --- Validación y HTTP -------------------------------------------------------
 def validate_section(body):
     titulo = str(body.get("titulo", "")).strip()[:200]
@@ -448,6 +593,8 @@ class Handler(BaseHTTPRequestHandler):
         if method == "GET" and parts == ["buscar-icono"]:
             q = urllib.parse.parse_qs(url.query).get("q", [""])[0]
             return 200, search_icons(q[:100])
+        if method == "GET" and parts == ["pihole"]:
+            return 200, {"configurado": pihole_enabled()}
         if method == "POST" and parts == ["password"]:
             with lock:
                 return 200, change_password(self.headers.get("Authorization"), self.body())
@@ -465,7 +612,22 @@ class Handler(BaseHTTPRequestHandler):
                             "titulo": validate_section(body)}
                     links.append(item)
                 else:
+                    dns = validate_dns(body["dns"]) if body.get("dns") else None
                     item = validate(body)
+                    if dns:
+                        try:
+                            pihole_add(dns)
+                        except BadRequest:
+                            # No dejar huérfano el icono recién descargado o subido.
+                            if body.get("icono_url") or body.get("icono_data"):
+                                try:
+                                    os.remove(os.path.join(IMAGES, item["icono"]))
+                                except OSError:
+                                    pass
+                            raise
+                        if dns.pop("usar_en_url"):
+                            item["url"] = url_with_host(item["url"], dns["dominio"])
+                        item["dns"] = dns
                     item["id"] = uuid.uuid4().hex[:8]
                     place(links, item, body.get("seccion") or "")
                 save(links)

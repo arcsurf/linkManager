@@ -24,6 +24,12 @@ viendo igual.
 
   El icono que elegís se descarga al servidor, así que la página no depende de
   servicios externos.
+- **DNS en Pi-hole** (opcional): al dar de alta un link podés crear también su
+  registro DNS local en Pi-hole. Indicás el dominio con el que querés resolverlo y
+  el destino: si es una IP se crea un registro A/AAAA, y si es un nombre, un CNAME.
+  Con *Usar este dominio en la URL del link*, la tarjeta queda apuntando al nombre
+  nuevo en lugar de a la IP. Funciona con Pi-hole v5 y v6 (ver
+  [Integración con Pi-hole](#integración-con-pi-hole)).
 - **Backups automáticos**: cada cambio guarda una copia con fecha de `links.json`,
   `index.html` y `htpasswd` (por defecto se conservan las últimas 200).
 - **Cambio de contraseña** del administrador desde el panel.
@@ -88,6 +94,36 @@ Por variables de entorno, en `deploy/linkmanager.service`:
 | `LM_LISTEN` | `127.0.0.1:8091` |
 | `LM_BACKUPS_TO_KEEP` | `200` |
 
+## Integración con Pi-hole
+
+Es opcional. Se configura en `/etc/linkmanager/pihole.env` (el instalador lo crea
+a partir de `deploy/pihole.env.example`, con permisos `600` porque guarda la
+contraseña) y systemd lo carga al iniciar el servicio:
+
+| Variable | Descripción |
+|---|---|
+| `LM_PIHOLE_URL` | URL base de Pi-hole, sin `/admin` (por ejemplo `http://192.0.2.10`) |
+| `LM_PIHOLE_PASSWORD` | v6: contraseña web o *app password*. v5: token de la API (*Settings → API → Show API token*) o la contraseña web |
+| `LM_PIHOLE_VERSION` | `auto` (por defecto), `5` o `6` |
+| `LM_PIHOLE_VERIFY_TLS` | `0` para aceptar un certificado autofirmado (por defecto `1`) |
+
+```bash
+sudo nano /etc/linkmanager/pihole.env
+sudo systemctl restart linkmanager
+```
+
+Con la integración activa, el formulario de alta muestra el bloque **DNS en
+Pi-hole**. Si escribís una URL con IP, la IP se propone como destino. Si la
+escribís con un nombre, el nombre se propone como dominio.
+
+- Primero se crea el registro en Pi-hole y después el link. Si Pi-hole rechaza el
+  registro (por ejemplo, porque el dominio ya existe), el link no se crea y el
+  panel muestra el error.
+- El registro queda guardado en el link (`dns` en `links.json`). Borrar o editar
+  el link **no** modifica Pi-hole: eso se hace desde Pi-hole.
+- La versión de Pi-hole se detecta sola: la v6 usa su API REST (`/api/config/dns/…`)
+  y la v5, `admin/api.php` (`customdns` / `customcname`).
+
 ## API
 
 Todas las rutas requieren autenticación básica.
@@ -95,12 +131,13 @@ Todas las rutas requieren autenticación básica.
 | Método | Ruta | Descripción |
 |---|---|---|
 | GET | `/api/links` | Lista de links |
-| POST | `/api/links` | Alta: `{nombre, url, descripcion, seccion, icono \| icono_url \| icono_data+icono_nombre}` o sección: `{tipo: "seccion", titulo}` |
+| POST | `/api/links` | Alta: `{nombre, url, descripcion, seccion, icono \| icono_url \| icono_data+icono_nombre, dns?}` o sección: `{tipo: "seccion", titulo}`. `dns` opcional: `{dominio, destino, usar_en_url}` |
 | PUT | `/api/links/<id>` | Modificación (mismos campos, todos opcionales; `seccion` mueve el link) o `{titulo}` para una sección |
 | DELETE | `/api/links/<id>` | Baja |
 | POST | `/api/links/<id>/mover` | Reordenar: `{dir: -1 \| 1}` |
 | GET | `/api/iconos` | Iconos disponibles en `images/` |
 | GET | `/api/buscar-icono?q=<nombre>` | Busca iconos en internet |
+| GET | `/api/pihole` | `{configurado}`: si la integración con Pi-hole está activa |
 | POST | `/api/password` | `{actual, nueva, repetir}` |
 
 ## Seguridad

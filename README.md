@@ -124,8 +124,13 @@ escribís con un nombre, el nombre se propone como dominio.
 - Primero se crea el registro en el servidor DNS y después el link. Si el servidor
   rechaza el registro (por ejemplo, porque el dominio ya existe), el link no se
   crea y el panel muestra el error.
-- El registro queda guardado en el link (`dns` en `links.json`). Borrar o editar
-  el link, o borrar la integración, **no** modifica el servidor DNS.
+- El registro queda guardado en el link (`dns` en `links.json`) y la lista del
+  panel lo muestra.
+- **Al borrar el link se borra también su registro DNS** en el servidor. Si el
+  servidor no responde o la integración ya no existe, el link no se borra y el
+  panel ofrece borrarlo igual, dejando el registro en el servidor. Si el registro
+  ya no estaba en el servidor, el link se borra sin error.
+- Editar el link o borrar la integración **no** modifica el servidor DNS.
 - Pi-hole: la v6 usa su API REST (`/api/config/dns/…`) y la v5, `admin/api.php`
   (`customdns` / `customcname`).
 - Si venías de la versión que se configuraba con variables `LM_PIHOLE_*`, al
@@ -136,8 +141,9 @@ escribís con un nombre, el nombre se propone como dominio.
 
 En `app.py`, sumá una entrada a `PROVIDERS` con su nombre, los tipos de registro
 que admite, los campos que pide (el panel arma el formulario con esa lista; un
-campo con `"secreto": true` nunca se devuelve al navegador) y dos funciones:
-`add(cfg, registro)` y `test(cfg)`.
+campo con `"secreto": true` nunca se devuelve al navegador) y tres funciones:
+`add(cfg, registro)`, `delete(cfg, registro)` (devuelve `False` si el registro ya
+no existía) y `test(cfg)`.
 
 ## API
 
@@ -148,7 +154,7 @@ Todas las rutas requieren autenticación básica.
 | GET | `/api/links` | Lista de links |
 | POST | `/api/links` | Alta: `{nombre, url, descripcion, seccion, icono \| icono_url \| icono_data+icono_nombre, dns?}` o sección: `{tipo: "seccion", titulo}`. `dns` opcional: `{integracion, dominio, destino, usar_en_url}` |
 | PUT | `/api/links/<id>` | Modificación (mismos campos, todos opcionales; `seccion` mueve el link) o `{titulo}` para una sección |
-| DELETE | `/api/links/<id>` | Baja |
+| DELETE | `/api/links/<id>` | Baja. Si el link tiene registro DNS, también lo borra del servidor (responde `dns: "borrado" \| "no_existia"`). Si eso falla responde 409 y no borra el link; con `?forzar=1` borra solo el link |
 | POST | `/api/links/<id>/mover` | Reordenar: `{dir: -1 \| 1}` |
 | GET | `/api/iconos` | Iconos disponibles en `images/` |
 | GET | `/api/buscar-icono?q=<nombre>` | Busca iconos en internet |

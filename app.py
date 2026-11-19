@@ -417,7 +417,7 @@ def change_password(auth_header, body):
 # --- Integraciones DNS -------------------------------------------------------
 # Cada tipo de servidor DNS describe sus campos y el panel arma el formulario a
 # partir de esa descripción. Para sumar otro servidor, agregá una entrada en
-# PROVIDERS con sus funciones add(cfg, registro) y test(cfg).
+# PROVIDERS con sus funciones add(cfg, registro), delete(cfg, registro) y test(cfg).
 _LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
 HOSTNAME_RE = re.compile(rf"(?:{_LABEL}\.)*{_LABEL}")
 _pihole_versions = {}  # versión detectada por URL
@@ -488,7 +488,7 @@ def pihole_v5(cfg, query):
     return res
 
 
-def pihole_v6(cfg, method, path):
+def pihole_v6(cfg, method, path, missing_ok=False):
     status, res = server_request(cfg, "POST", "/api/auth", {"password": cfg["password"]})
     sid = res.get("session", {}).get("sid") if isinstance(res, dict) else None
     if not sid:
@@ -496,6 +496,8 @@ def pihole_v6(cfg, method, path):
     auth = {"X-FTL-SID": sid}
     try:
         status, res = server_request(cfg, method, path, headers=auth)
+        if status == 404 and missing_ok:
+            return None
         if status >= 300:
             err = res.get("error", {}) if isinstance(res, dict) else {}
             detalle = ": ".join(str(x) for x in (err.get("message"), err.get("hint")) if x)
@@ -522,6 +524,26 @@ def pihole_add(cfg, rec):
     res = pihole_v5(cfg, q)
     if not res.get("success"):
         raise BadRequest(f"{cfg['nombre']}: {html.unescape(str(res.get('message') or 'error desconocido'))}")
+
+
+def pihole_delete(cfg, rec):
+    """Borra el registro. Devuelve False si ya no existía en el servidor."""
+    cname = rec["tipo"] == "CNAME"
+    if pihole_version(cfg) == "6":
+        item = f"{rec['dominio']},{rec['destino']}" if cname else f"{rec['destino']} {rec['dominio']}"
+        path = "/api/config/dns/cnameRecords/" if cname else "/api/config/dns/hosts/"
+        return pihole_v6(cfg, "DELETE", path + urllib.parse.quote(item, safe=""), missing_ok=True) is not None
+    if cname:
+        q = {"customcname": "", "action": "delete", "domain": rec["dominio"], "target": rec["destino"]}
+    else:
+        q = {"customdns": "", "action": "delete", "domain": rec["dominio"], "ip": rec["destino"]}
+    res = pihole_v5(cfg, q)
+    msg = html.unescape(str(res.get("message") or ""))
+    if res.get("success"):
+        return True
+    if "does not exist" in msg:
+        return False
+    raise BadRequest(f"{cfg['nombre']}: {msg or 'error desconocido'}")
 
 
 def pihole_test(cfg):
@@ -553,6 +575,7 @@ PROVIDERS = {
              "defecto": True, "ayuda": "Desmarcalo si usa un certificado autofirmado."},
         ],
         "add": pihole_add,
+        "delete": pihole_delete,
         "test": pihole_test,
     },
 }
@@ -655,6 +678,20 @@ def validate_dns(dns, integrations):
         raise BadRequest(f"{cfg['nombre']} no admite registros {tipo}")
     return cfg, {"tipo": tipo, "dominio": dominio, "destino": destino,
                  "usar_en_url": bool(dns.get("usar_en_url"))}
+
+
+def integration_for_link(dns, integrations):
+    ident = dns.get("integracion")
+    if ident:
+        cfg = find_integration(integrations, ident)
+        if not cfg:
+            raise BadRequest(f"La integración '{dns.get('servidor', ident)}' ya no existe")
+        return cfg
+    # Links creados antes de las integraciones no guardan en qué servidor están:
+    # si hay una sola integración, es esa.
+    if len(integrations) == 1:
+        return integrations[0]
+    raise BadRequest("No se sabe en qué servidor DNS está el registro de este link")
 
 
 def url_with_host(url, host):
@@ -767,9 +804,20 @@ class Handler(BaseHTTPRequestHandler):
                     save(links)
                     return 200, item
                 if method == "DELETE" and len(parts) == 2:
+                    # Con ?forzar=1 se borra solo el link y el registro DNS queda en el servidor.
+                    forzar = urllib.parse.parse_qs(url.query).get("forzar") == ["1"]
+                    dns_estado = None
+                    if item.get("dns") and not forzar:
+                        try:
+                            cfg = integration_for_link(item["dns"], load_integrations())
+                            existia = PROVIDERS[cfg["tipo"]]["delete"](cfg, item["dns"])
+                        except BadRequest as ex:
+                            return 409, {"error": f"No se pudo borrar el registro DNS: {ex}",
+                                         "dns_fallo": True}
+                        dns_estado = "borrado" if existia else "no_existia"
                     links.remove(item)
                     save(links)
-                    return 200, {"ok": True}
+                    return 200, {"ok": True, "dns": dns_estado}
                 if method == "POST" and parts[2:] == ["mover"]:
                     d = 1 if self.body().get("dir", 1) > 0 else -1
                     i = links.index(item)

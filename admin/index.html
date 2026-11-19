@@ -227,7 +227,7 @@ async function api(metodo, ruta, cuerpo) {
         body: cuerpo ? JSON.stringify(cuerpo) : undefined,
     });
     const datos = await r.json().catch(() => ({error: "Respuesta inválida (" + r.status + ")"}));
-    if (!r.ok) throw new Error(datos.error || r.statusText);
+    if (!r.ok) throw Object.assign(new Error(datos.error || r.statusText), {status: r.status, datos});
     return datos;
 }
 
@@ -277,6 +277,12 @@ function dibujar() {
         small.style.cssText = "font-size:12px;color:#c8d8e8";
         small.textContent = l.descripcion;
         tdNombre.appendChild(small);
+        if (l.dns) {
+            const dns = document.createElement("div");
+            dns.style.cssText = "font-size:12px;color:#66c0f4";
+            dns.textContent = `DNS: ${l.dns.dominio} → ${l.dns.destino}` + (l.dns.servidor ? ` (${l.dns.servidor})` : "");
+            tdNombre.appendChild(dns);
+        }
         const btns = document.createElement("td");
         btns.className = "btns";
         btns.append(
@@ -425,12 +431,28 @@ async function borrar(l) {
     const esSeccion = l.tipo === "seccion";
     const pregunta = esSeccion
         ? `¿Borrar la sección "${l.titulo}"? Sus links no se borran: pasan a la sección anterior.`
-        : `¿Borrar el link "${l.nombre}"?`;
+        : `¿Borrar el link "${l.nombre}"?` + (l.dns
+            ? `\n\nTambién se va a borrar su registro DNS ${l.dns.dominio} → ${l.dns.destino}` +
+              (l.dns.servidor ? ` en ${l.dns.servidor}.` : ".")
+            : "");
     if (!confirm(pregunta)) return;
     try {
-        await api("DELETE", "links/" + l.id);
+        let r;
+        try {
+            r = await api("DELETE", "links/" + l.id);
+        } catch (e) {
+            // Si falla el borrado en el servidor DNS, el link no se borra: ofrecer borrarlo igual.
+            if (!e.datos?.dns_fallo) throw e;
+            if (!confirm(`${e.message}\n\n¿Borrar el link igual? El registro DNS va a quedar en el servidor y vas a tener que borrarlo a mano.`)) return;
+            r = await api("DELETE", `links/${l.id}?forzar=1`);
+            r.dns = "pendiente";
+        }
         if (editando === l.id) limpiar();
-        aviso(`"${esSeccion ? l.titulo : l.nombre}" borrado`);
+        const nombre = esSeccion ? l.titulo : l.nombre;
+        aviso({borrado: `"${nombre}" y su registro DNS ${l.dns?.dominio} borrados`,
+               no_existia: `"${nombre}" borrado (su registro DNS ya no estaba en el servidor)`,
+               pendiente: `"${nombre}" borrado; el registro DNS ${l.dns?.dominio} quedó en el servidor`,
+              }[r.dns] || `"${nombre}" borrado`, r.dns === "pendiente" ? "error" : "ok");
         await cargar();
     } catch (e) { aviso(e.message, "error"); }
 }

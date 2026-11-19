@@ -19,6 +19,11 @@ looks the same.
 
 ![linkManager admin panel](docs/screenshots/admin-panel.png)
 
+**Settings**: panel language, DNS integrations (here, choosing the server type
+for a new one) and the administrator password:
+
+![linkManager settings](docs/screenshots/settings.png)
+
 ## Features
 
 - **Link management**: name, URL, description and icon. The ↑ ↓ arrows change the order.

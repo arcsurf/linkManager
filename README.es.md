@@ -20,6 +20,11 @@ viendo igual.
 
 ![Panel de administración de linkManager](docs/screenshots/admin-panel.png)
 
+**Configuración**: idioma del panel, integraciones DNS (acá, eligiendo el tipo de
+servidor para una nueva) y contraseña del administrador:
+
+![Configuración de linkManager](docs/screenshots/settings.png)
+
 ## Funcionalidades
 
 - **ABM de links**: nombre, URL, descripción e icono. Las flechas ↑ ↓ cambian el orden.

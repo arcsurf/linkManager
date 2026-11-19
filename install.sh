@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # linkManager installer for Debian/Ubuntu (nginx + systemd).
-# Usage: sudo ./install.sh
+# Usage: sudo ./install.sh   (optional: sudo LM_LANGUAGE=es ./install.sh)
 # It is idempotent: it does not overwrite existing links, page or password.
 set -euo pipefail
 
@@ -43,6 +43,14 @@ if [ ! -f "$DATA_DIR/htpasswd" ]; then
     printf 'admin:%s\n' "$(printf '%s\n' "$PASS" | openssl passwd -6 -stdin)" > "$DATA_DIR/htpasswd"
     chown www-data:www-data "$DATA_DIR/htpasswd"
     chmod 640 "$DATA_DIR/htpasswd"
+fi
+
+# Initial panel language (LM_LANGUAGE=en|es), only when it was not chosen yet
+if [ -n "${LM_LANGUAGE:-}" ] && [ ! -f "$DATA_DIR/settings.json" ]; then
+    case "$LM_LANGUAGE" in en|es) ;; *) echo "LM_LANGUAGE must be en or es"; exit 1 ;; esac
+    printf '{\n  "language": "%s"\n}\n' "$LM_LANGUAGE" > "$DATA_DIR/settings.json"
+    chown www-data:www-data "$DATA_DIR/settings.json"
+    chmod 640 "$DATA_DIR/settings.json"
 fi
 
 echo "==> Configuring systemd and nginx"

@@ -45,19 +45,67 @@ looks the same.
 - **No dependencies**: only the Python 3 standard library, nginx, openssl and,
   for the SSH DNS integrations, the `ssh` client (openssh-client).
 
-## Installation (Debian / Ubuntu)
+## Installation
+
+### Option 1: Proxmox VE (new LXC container)
+
+Run this in the **Proxmox VE host** shell (as root). It creates an unprivileged
+Debian container (1 core, 512 MB RAM, 4 GB disk, DHCP), installs linkManager in
+it and shows the URL and the initial password:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/arcsurf/linkManager/main/proxmox/linkmanager-lxc.sh)"
+```
+
+It shows a summary and asks for confirmation before creating anything. It uses
+the newest Debian 13 (or 12) template already downloaded, or downloads it.
+
+To choose the options, download the script, review it and run it with them:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/arcsurf/linkManager/main/proxmox/linkmanager-lxc.sh
+bash linkmanager-lxc.sh --help
+bash linkmanager-lxc.sh --ctid 130 --hostname links --ip 192.0.2.20/24 --gw 192.0.2.1 --lang es
+```
+
+| Option | Default |
+|---|---|
+| `-i, --ctid ID` | next free ID |
+| `-n, --hostname NAME` | `linkmanager` |
+| `-s, --storage NAME` | `local-lvm`, `local-zfs` or the first storage for containers |
+| `-t, --template-storage NAME` | `local` |
+| `-d, --disk GB` / `-m, --memory MB` / `-c, --cores N` | `4` / `512` / `1` |
+| `-b, --bridge NAME` | `vmbr0` |
+| `--ip CIDR\|dhcp`, `--gw IP`, `--vlan TAG` | `dhcp` |
+| `-l, --lang en\|es` | `en` (initial panel language) |
+| `--ssh-key FILE` | none (use `pct enter <ID>` to open a console) |
+| `--ref REF`, `--repo OWNER/NAME` | `main`, `arcsurf/linkManager` |
+| `--source PATH` | download from GitHub (or install a local copy: folder or `.tar.gz`) |
+| `--no-onboot`, `-y, --yes` | starts on boot, asks for confirmation |
+
+If something fails after the container was created, the script keeps it so you
+can check what happened, and prints the command to delete it.
+
+To update linkManager later, run inside the container (`pct enter <ID>`):
+
+```bash
+curl -fsSL https://github.com/arcsurf/linkManager/archive/main.tar.gz | tar -xz -C /opt/linkmanager-src --strip-components=1 && bash /opt/linkmanager-src/install.sh
+```
+
+### Option 2: Debian / Ubuntu
 
 ```bash
 git clone https://github.com/arcsurf/linkManager.git
 cd linkManager
-sudo ./install.sh
+sudo ./install.sh                  # or: sudo LM_LANGUAGE=es ./install.sh
 ```
 
 When it finishes, the installer shows the URL and the initial password of the
 `admin` user. Open `http://<server>/admin/` and change it in *Settings → Change
-the administrator password*.
+the administrator password*. Running `install.sh` again updates the application
+and keeps the links, the page, the password and the settings.
 
-It works well in a Proxmox LXC container (Debian 12/13 or Ubuntu 24.04; 512 MB
+It works well in any Debian 12/13 or Ubuntu 24.04 machine or container (512 MB
 of RAM is enough).
 
 ### Migrating an existing page

@@ -47,21 +47,70 @@ viendo igual.
 - **Sin dependencias**: solo la biblioteca estándar de Python 3, nginx, openssl y,
   para las integraciones DNS por SSH, el cliente `ssh` (openssh-client).
 
-## Instalación (Debian / Ubuntu)
+## Instalación
+
+### Opción 1: Proxmox VE (contenedor LXC nuevo)
+
+Ejecutá esto en la consola del **host Proxmox VE** (como root). Crea un contenedor
+Debian sin privilegios (1 núcleo, 512 MB de RAM, 4 GB de disco, DHCP), instala
+linkManager adentro y muestra la URL y la contraseña inicial:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/arcsurf/linkManager/main/proxmox/linkmanager-lxc.sh)"
+```
+
+Antes de crear nada muestra un resumen y pide confirmación. Usa la plantilla de
+Debian 13 (o 12) más nueva que ya tengas descargada, o la descarga.
+
+Para elegir las opciones, descargá el script, revisalo y ejecutalo con ellas
+(con `--lang es` el panel arranca en español):
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/arcsurf/linkManager/main/proxmox/linkmanager-lxc.sh
+bash linkmanager-lxc.sh --help
+bash linkmanager-lxc.sh --ctid 130 --hostname links --ip 192.0.2.20/24 --gw 192.0.2.1 --lang es
+```
+
+| Opción | Por defecto |
+|---|---|
+| `-i, --ctid ID` | el próximo ID libre |
+| `-n, --hostname NOMBRE` | `linkmanager` |
+| `-s, --storage NOMBRE` | `local-lvm`, `local-zfs` o el primer almacenamiento para contenedores |
+| `-t, --template-storage NOMBRE` | `local` |
+| `-d, --disk GB` / `-m, --memory MB` / `-c, --cores N` | `4` / `512` / `1` |
+| `-b, --bridge NOMBRE` | `vmbr0` |
+| `--ip CIDR\|dhcp`, `--gw IP`, `--vlan TAG` | `dhcp` |
+| `-l, --lang en\|es` | `en` (idioma inicial del panel) |
+| `--ssh-key ARCHIVO` | ninguna (usá `pct enter <ID>` para abrir una consola) |
+| `--ref REF`, `--repo DUEÑO/NOMBRE` | `main`, `arcsurf/linkManager` |
+| `--source RUTA` | descarga de GitHub (o instala una copia local: carpeta o `.tar.gz`) |
+| `--no-onboot`, `-y, --yes` | arranca con el host, pide confirmación |
+
+Si algo falla después de crear el contenedor, el script lo deja para que puedas
+ver qué pasó y te muestra el comando para borrarlo.
+
+Para actualizar linkManager más adelante, ejecutá dentro del contenedor
+(`pct enter <ID>`):
+
+```bash
+curl -fsSL https://github.com/arcsurf/linkManager/archive/main.tar.gz | tar -xz -C /opt/linkmanager-src --strip-components=1 && bash /opt/linkmanager-src/install.sh
+```
+
+### Opción 2: Debian / Ubuntu
 
 ```bash
 git clone https://github.com/arcsurf/linkManager.git
 cd linkManager
-sudo ./install.sh
+sudo LM_LANGUAGE=es ./install.sh   # sin LM_LANGUAGE, el panel arranca en inglés
 ```
 
 Al terminar, el instalador muestra la URL y la contraseña inicial del usuario
 `admin`. Entrá a `http://<servidor>/admin/` y cambiala desde *Configuración →
-Cambiar contraseña del administrador*. El panel arranca en inglés: elegí
-*Español* en *Settings → Language*.
+Cambiar contraseña del administrador*. Volver a ejecutar `install.sh` actualiza
+la aplicación y conserva los links, la página, la contraseña y los ajustes.
 
-Funciona bien en un contenedor LXC de Proxmox (Debian 12/13 o Ubuntu 24.04, con
-512 MB de RAM alcanza).
+Funciona bien en cualquier máquina o contenedor con Debian 12/13 o Ubuntu 24.04
+(con 512 MB de RAM alcanza).
 
 ### Migrar una página existente
 

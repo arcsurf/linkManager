@@ -1,20 +1,25 @@
 #!/usr/bin/env python3
-"""linkManager: API para administrar las tarjetas de una página de links estática.
+"""linkManager: API to manage the cards of a static links page.
 
-- Guarda los links en un JSON y regenera las tarjetas de index.html entre los
-  marcadores <!-- LINKS:START --> y <!-- LINKS:END -->.
-- Cada cambio deja un backup con fecha de links.json e index.html.
-- Busca iconos en internet (dashboard-icons, selfh.st, Simple Icons y
-  Wikimedia Commons) y los descarga al elegirlos.
-- Permite cambiar la contraseña del panel (archivo htpasswd que lee nginx).
-- Integraciones con servidores DNS configuradas desde el panel (Pi-hole, AdGuard
-  Home, Technitium, PowerDNS, NextDNS, Control D y, por SSH, Unbound, dnsmasq,
-  Blocky, Knot Resolver, CoreDNS, BIND9, dnscrypt-proxy y OpenWrt): al dar de
-  alta un link se puede crear su registro DNS, A/AAAA si el destino es una IP o
-  CNAME si es un nombre, y al borrar el link se borra el registro.
+- Stores the links in a JSON file and regenerates the cards of index.html
+  between the <!-- LINKS:START --> and <!-- LINKS:END --> markers.
+- Every change leaves a timestamped backup of links.json and index.html.
+- Searches icons online (dashboard-icons, selfh.st, Simple Icons and
+  Wikimedia Commons) and downloads the chosen one.
+- Changes the panel password (htpasswd file read by nginx).
+- DNS server integrations configured from the panel (Pi-hole, AdGuard Home,
+  Technitium, PowerDNS, NextDNS, Control D and, over SSH, Unbound, dnsmasq,
+  Blocky, Knot Resolver, CoreDNS, BIND9, dnscrypt-proxy and OpenWrt): adding a
+  link can create its DNS record (A/AAAA when the target is an IP, CNAME when
+  it is a name) and deleting the link deletes the record.
+- English and Spanish user interface; the language is a panel setting.
 
-Solo usa la biblioteca estándar de Python. La autenticación la hace nginx
-(auth_basic); este servicio debe escuchar únicamente en localhost.
+Only the Python standard library is used. Authentication is done by nginx
+(auth_basic); this service must listen on localhost only.
+
+Note: the JSON field names stored in links.json / integraciones.json and used
+by the HTTP API ("nombre", "descripcion", "icono", "seccion"...) are kept in
+Spanish for backward compatibility with existing installations.
 """
 import base64
 import hashlib
@@ -38,7 +43,7 @@ import uuid
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-# --- Configuración (variables de entorno) -----------------------------------
+# --- Configuration (environment variables) -----------------------------------
 WEB_ROOT = os.environ.get("LM_WEB_ROOT", "/var/www/linkmanager")
 DATA = os.environ.get("LM_DATA", "/var/lib/linkmanager/links.json")
 BACKUP_DIR = os.environ.get("LM_BACKUP_DIR", "/var/backups/linkmanager")
@@ -57,7 +62,7 @@ MAX_ICON_BYTES = 2 * 1024 * 1024
 START, END = "<!-- LINKS:START -->", "<!-- LINKS:END -->"
 USER_AGENT = "linkManager/1.0 (+https://github.com/arcsurf/linkManager)"
 
-# Hosts desde los que se permite descargar iconos (evita SSRF).
+# Hosts icons may be downloaded from (prevents SSRF).
 ICON_HOSTS = {"cdn.jsdelivr.net", "cdn.simpleicons.org",
               "upload.wikimedia.org", "thumb.wikimedia.org"}
 DASHBOARD_ICONS = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons"
@@ -66,9 +71,12 @@ SIMPLE_ICONS_DATA = "https://cdn.jsdelivr.net/npm/simple-icons/data/simple-icons
 COMMONS_API = "https://commons.wikimedia.org/w/api.php"
 INDEX_TTL = 24 * 3600
 
-# Integraciones (servidores DNS) configuradas desde el panel. Por defecto, junto a links.json.
+# DNS server integrations configured from the panel. Stored next to links.json by default.
 INTEGRATIONS = os.environ.get("LM_INTEGRATIONS",
                               os.path.join(os.path.dirname(DATA), "integraciones.json"))
+# Panel settings (language). Stored next to links.json by default.
+SETTINGS = os.environ.get("LM_SETTINGS", os.path.join(os.path.dirname(DATA), "settings.json"))
+DEFAULT_LANGUAGE = os.environ.get("LM_LANGUAGE", "en")
 
 lock = threading.Lock()
 
@@ -77,7 +85,47 @@ class BadRequest(Exception):
     pass
 
 
-# --- Persistencia ------------------------------------------------------------
+# --- Internationalization -----------------------------------------------------
+# Texts are written in English in the code; ES holds their Spanish translation.
+# tr() returns the text in the language selected in the panel settings.
+LANGUAGES = {"en": "English", "es": "Español"}
+_settings_cache = {}
+
+
+def load_settings():
+    if not _settings_cache:
+        settings = {"language": DEFAULT_LANGUAGE if DEFAULT_LANGUAGE in LANGUAGES else "en"}
+        try:
+            with open(SETTINGS) as f:
+                settings.update(json.load(f))
+        except (FileNotFoundError, ValueError):
+            pass
+        _settings_cache.update(settings)
+    return dict(_settings_cache)
+
+
+def save_settings(body):
+    language = str(body.get("language", ""))
+    if language not in LANGUAGES:
+        raise BadRequest(tr("Unknown language"))
+    settings = {**load_settings(), "language": language}
+    write_atomic(SETTINGS, json.dumps(settings, indent=2) + "\n")
+    _settings_cache.clear()
+    _settings_cache.update(settings)
+    return settings
+
+
+def language():
+    return load_settings().get("language", "en")
+
+
+def tr(text, **kw):
+    if language() == "es":
+        text = ES.get(text, text)
+    return text.format(**kw) if kw else text
+
+
+# --- Persistence ---------------------------------------------------------------
 def load():
     with open(DATA) as f:
         return json.load(f)
@@ -97,7 +145,7 @@ def backup(paths=None):
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     for src in paths or (DATA, INDEX):
         if os.path.exists(src):
-            # copy2 conserva los permisos (600 en integraciones.json)
+            # copy2 keeps the permissions (600 on integraciones.json)
             shutil.copy2(src, os.path.join(BACKUP_DIR, f"{os.path.basename(src)}.bkp-{stamp}"))
     files = sorted(os.listdir(BACKUP_DIR))
     for prefix in ("links.json.bkp-", "index.html.bkp-",
@@ -111,7 +159,7 @@ def is_section(item):
 
 
 def render(items):
-    """Tarjetas agrupadas: cada divisor abre una sección nueva con su título."""
+    """Grouped cards: every divider starts a new section with its title."""
     e = lambda s: html.escape(s, quote=True)
     blocks, cards = [], []
 
@@ -141,7 +189,7 @@ def render(items):
 
 
 def section_of(items, item):
-    """id del divisor bajo el que está item ("" = grupo inicial sin título)."""
+    """Id of the divider the item is under ("" = initial group without title)."""
     current = ""
     for it in items:
         if it is item:
@@ -152,14 +200,14 @@ def section_of(items, item):
 
 
 def place(items, item, section_id):
-    """Mueve (o inserta) item al final del grupo de la sección indicada."""
+    """Moves (or inserts) the item at the end of the given section's group."""
     if item in items:
         items.remove(item)
     j = 0
     if section_id:
         j = next((i for i, it in enumerate(items) if it["id"] == section_id and is_section(it)), None)
         if j is None:
-            raise BadRequest("La sección elegida no existe")
+            raise BadRequest(tr("The selected section does not exist"))
         j += 1
     while j < len(items) and not is_section(items[j]):
         j += 1
@@ -175,19 +223,19 @@ def save(links):
     write_atomic(INDEX, page[:i] + render(links) + page[j:])
 
 
-# --- Iconos ------------------------------------------------------------------
+# --- Icons -------------------------------------------------------------------
 def icons():
     return sorted(f for f in os.listdir(IMAGES)
                   if os.path.splitext(f)[1].lower() in ICON_EXT)
 
 
-def slugify(text, default="icono"):
+def slugify(text, default="icon"):
     return re.sub(r"[^A-Za-z0-9_-]+", "_", text).strip("_")[:60] or default
 
 
 def write_icon(stem, ext, raw):
     if len(raw) > MAX_ICON_BYTES:
-        raise BadRequest("El icono supera 2 MB")
+        raise BadRequest(tr("The icon is larger than 2 MB"))
     stem = slugify(stem)
     name, n = stem + ext, 1
     while os.path.exists(os.path.join(IMAGES, name)):
@@ -210,7 +258,7 @@ _opener = urllib.request.build_opener(AllowedHostsRedirect)
 def check_icon_url(url):
     u = urllib.parse.urlparse(url)
     if u.scheme != "https" or u.hostname not in ICON_HOSTS:
-        raise BadRequest("Origen de icono no permitido")
+        raise BadRequest(tr("Icon source not allowed"))
 
 
 def http_get(url, limit=MAX_ICON_BYTES, timeout=15):
@@ -218,45 +266,45 @@ def http_get(url, limit=MAX_ICON_BYTES, timeout=15):
     with _opener.open(req, timeout=timeout) as r:
         raw = r.read(limit + 1)
         if len(raw) > limit:
-            raise BadRequest("El archivo descargado es demasiado grande")
+            raise BadRequest(tr("The downloaded file is too large"))
         return raw, r.headers.get_content_type()
 
 
-def download_icon(url, nombre):
+def download_icon(url, name):
     check_icon_url(url)
     try:
         raw, ctype = http_get(url)
     except BadRequest:
         raise
     except Exception as ex:  # noqa: BLE001
-        raise BadRequest(f"No se pudo descargar el icono: {ex}")
+        raise BadRequest(tr("Could not download the icon: {error}", error=ex))
     ext = MIME_EXT.get(ctype)
     if not ext:
-        raise BadRequest(f"El archivo descargado no es una imagen válida ({ctype})")
-    return write_icon(nombre, ext, raw)
+        raise BadRequest(tr("The downloaded file is not a valid image ({type})", type=ctype))
+    return write_icon(name, ext, raw)
 
 
-def store_icon(body, nombre):
-    """Devuelve el nombre del icono: descargado, subido (base64) o existente."""
+def store_icon(body, name):
+    """Returns the icon file name: downloaded, uploaded (base64) or existing."""
     if body.get("icono_url"):
-        return download_icon(body["icono_url"], nombre)
+        return download_icon(body["icono_url"], name)
     if body.get("icono_data"):
         stem, ext = os.path.splitext(os.path.basename(body.get("icono_nombre") or ""))
         ext = ext.lower()
         if ext not in ICON_EXT:
-            raise BadRequest(f"Formato de icono no permitido ({', '.join(sorted(ICON_EXT))})")
+            raise BadRequest(tr("Icon format not allowed ({formats})", formats=", ".join(sorted(ICON_EXT))))
         try:
             raw = base64.b64decode(body["icono_data"].split(",", 1)[-1], validate=True)
         except ValueError:
-            raise BadRequest("Icono subido inválido")
+            raise BadRequest(tr("Invalid uploaded icon"))
         return write_icon(stem, ext, raw)
     name = body.get("icono") or ""
     if name not in icons():
-        raise BadRequest("Elegí un icono: existente, subido o de internet")
+        raise BadRequest(tr("Choose an icon: existing, uploaded or from the internet"))
     return name
 
 
-# --- Búsqueda de iconos en internet -----------------------------------------
+# --- Online icon search --------------------------------------------------------
 _index_cache = {}
 
 
@@ -275,7 +323,7 @@ def norm(text):
 
 
 def rank(q, name):
-    """0 = exacto, 1 = empieza igual, 2 = contiene, None = no coincide."""
+    """0 = exact, 1 = same prefix, 2 = contains, None = no match."""
     n = norm(name)
     if not n or not q:
         return None
@@ -369,7 +417,7 @@ def search_icons(text, per_source=4, total=12):
     run(search_selfhst, q)
     run(search_simple_icons, q)
     run(search_commons, text)
-    # Respaldos para nombres poco conocidos: Commons sin "logo" y palabra por palabra.
+    # Fallbacks for little-known names: Commons without "logo" and word by word.
     if len(results) < MIN_RESULTS:
         run(search_commons, text, "")
     words = [w for w in re.split(r"\W+", text) if len(norm(w)) >= 3 and norm(w) != q]
@@ -380,11 +428,11 @@ def search_icons(text, per_source=4, total=12):
             run(fn, norm(w))
         run(search_commons, w)
     if errors and not results:
-        raise BadRequest("No se pudo buscar en internet: " + "; ".join(errors))
+        raise BadRequest(tr("Could not search the internet: {errors}", errors="; ".join(errors)))
     return results[:total]
 
 
-# --- Contraseña --------------------------------------------------------------
+# --- Password ----------------------------------------------------------------
 def basic_auth(header):
     if not header or not header.startswith("Basic "):
         return None, None
@@ -398,16 +446,16 @@ def basic_auth(header):
 def change_password(auth_header, body):
     user, current = basic_auth(auth_header)
     if not user:
-        raise BadRequest("No se recibió la autenticación actual")
+        raise BadRequest(tr("The current authentication was not received"))
     if not hmac.compare_digest(str(body.get("actual", "")).encode(), current.encode()):
-        raise BadRequest("La contraseña actual no es correcta")
+        raise BadRequest(tr("The current password is not correct"))
     new = str(body.get("nueva", ""))
     if len(new) < 8:
-        raise BadRequest("La nueva contraseña debe tener al menos 8 caracteres")
+        raise BadRequest(tr("The new password must be at least 8 characters long"))
     if new != body.get("repetir"):
-        raise BadRequest("Las contraseñas nuevas no coinciden")
+        raise BadRequest(tr("The new passwords do not match"))
     if new == current:
-        raise BadRequest("La nueva contraseña es igual a la actual")
+        raise BadRequest(tr("The new password is the same as the current one"))
     hashed = subprocess.run(["openssl", "passwd", "-6", "-stdin"], input=new + "\n",
                             capture_output=True, text=True, check=True).stdout.strip()
     if os.path.exists(HTPASSWD):
@@ -418,17 +466,17 @@ def change_password(auth_header, body):
     return {"ok": True, "usuario": user}
 
 
-# --- Integraciones DNS -------------------------------------------------------
-# Cada tipo de servidor DNS describe sus campos y el panel arma el formulario a
-# partir de esa descripción. Hay tres familias:
-#  - API del servidor: Pi-hole, AdGuard Home, Technitium, PowerDNS Authoritative.
-#  - Nube: NextDNS y Control D.
-#  - SSH, para los servidores que solo se configuran con archivos: linkManager
-#    escribe sus registros en un archivo propio y recarga el servicio (Unbound,
-#    dnsmasq, Blocky, Knot Resolver, CoreDNS, PowerDNS Recursor, dnscrypt-proxy);
-#    BIND9 usa nsupdate y OpenWrt, uci.
-# Para sumar otro servidor, agregá una entrada en PROVIDERS con sus funciones
-# add(cfg, registro), delete(cfg, registro) y test(cfg).
+# --- DNS integrations ------------------------------------------------------------
+# Every DNS server type describes its fields and the panel builds the form from
+# that description. There are three families:
+#  - Server API: Pi-hole, AdGuard Home, Technitium, PowerDNS Authoritative.
+#  - Cloud: NextDNS and Control D.
+#  - SSH, for servers that are only configured through files: linkManager writes
+#    its records to a file of its own and reloads the service (Unbound, dnsmasq,
+#    Blocky, Knot Resolver, CoreDNS, PowerDNS Recursor, dnscrypt-proxy);
+#    BIND9 uses nsupdate and OpenWrt uses uci.
+# To add another server, add an entry to PROVIDERS with its functions
+# add(cfg, record), delete(cfg, record) and test(cfg).
 _LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
 HOSTNAME_RE = re.compile(rf"(?:{_LABEL}\.)*{_LABEL}")
 USER_RE = re.compile(r"[a-z_][a-z0-9_.-]{0,31}")
@@ -437,8 +485,8 @@ PROFILE_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
 KNOWN_HOSTS = os.path.join(os.path.dirname(INTEGRATIONS), "known_hosts")
 NEXTDNS_API = "https://api.nextdns.io"
 CONTROLD_API = "https://api.controld.com"
-FILE_HEADER = "# Registros DNS administrados por linkManager. No editar a mano."
-_pihole_versions = {}  # versión detectada por URL
+FILE_HEADER = "# DNS records managed by linkManager. Do not edit by hand."
+_pihole_versions = {}  # detected version per URL
 
 
 def valid_hostname(name):
@@ -454,7 +502,7 @@ def valid_host_or_ip(value):
 
 
 def normalize_server_url(value, default_port=None):
-    """Acepta una IP, un nombre o una URL; devuelve la URL base sin /admin."""
+    """Accepts an IP, a name or a URL; returns the base URL without /admin."""
     v = str(value or "").strip().rstrip("/")
     if v.lower().endswith("/admin"):
         v = v[:-len("/admin")].rstrip("/")
@@ -467,14 +515,14 @@ def normalize_server_url(value, default_port=None):
     except ValueError:
         port = -1
     if u.scheme not in ("http", "https") or not u.hostname or port == -1:
-        raise BadRequest("Dirección del servidor inválida (usá una IP, un nombre o una URL http/https)")
+        raise BadRequest(tr("Invalid server address (use an IP, a name or an http/https URL)"))
     if bare and default_port and port is None and not u.path:
         v += f":{default_port}"
     return v
 
 
 def server_request(cfg, method, path, body=None, headers=None, form=None, base=None):
-    """Devuelve (status, json o texto). Los errores HTTP también se devuelven."""
+    """Returns (status, json or text). HTTP errors are returned too."""
     base = cfg["url"] if base is None else base
     data, ctype = None, None
     if form is not None:
@@ -495,7 +543,8 @@ def server_request(cfg, method, path, body=None, headers=None, form=None, base=N
     except urllib.error.HTTPError as ex:
         status, raw = ex.code, ex.read(1024 * 1024)
     except (urllib.error.URLError, OSError) as ex:
-        raise BadRequest(f"{cfg['nombre']}: no se pudo conectar ({getattr(ex, 'reason', ex)})")
+        raise BadRequest(tr("{name}: could not connect ({reason})", name=cfg["nombre"],
+                            reason=getattr(ex, "reason", ex)))
     try:
         return status, json.loads(raw)
     except ValueError:
@@ -503,7 +552,7 @@ def server_request(cfg, method, path, body=None, headers=None, form=None, base=N
 
 
 def http_error(cfg, status, res, default=None):
-    """Arma un mensaje legible a partir de los formatos de error de cada API."""
+    """Builds a readable message from the error formats of each API."""
     msg = None
     if isinstance(res, dict):
         err = res.get("error")
@@ -517,11 +566,11 @@ def http_error(cfg, status, res, default=None):
         msg = msg or res.get("errorMessage") or res.get("message")
     elif isinstance(res, str) and res and not res.lstrip().startswith("<"):
         msg = res[:300]
-    return BadRequest(f"{cfg['nombre']}: {msg or default or f'error HTTP {status}'}")
+    return BadRequest(f"{cfg['nombre']}: {msg or default or tr('HTTP error {status}', status=status)}")
 
 
-def duplicate(cfg, dominio):
-    return BadRequest(f"{cfg['nombre']}: ya existe un registro para {dominio}")
+def duplicate(cfg, domain):
+    return BadRequest(tr("{name}: a record for {domain} already exists", name=cfg["nombre"], domain=domain))
 
 
 # Pi-hole ---------------------------------------------------------------------
@@ -529,7 +578,7 @@ def pihole_version(cfg):
     if cfg.get("version") in ("5", "6"):
         return cfg["version"]
     if cfg["url"] not in _pihole_versions:
-        # v6 responde JSON con "session" en /api/auth; v5 no tiene esa ruta.
+        # v6 answers /api/auth with JSON containing "session"; v5 has no such path.
         _, res = server_request(cfg, "GET", "/api/auth")
         _pihole_versions[cfg["url"]] = "6" if isinstance(res, dict) and "session" in res else "5"
     return _pihole_versions[cfg["url"]]
@@ -537,14 +586,15 @@ def pihole_version(cfg):
 
 def pihole_v5(cfg, query):
     pw = cfg["password"]
-    # El token de la API v5 es el hash doble SHA-256 de la contraseña web.
+    # The v5 API token is the double SHA-256 hash of the web password.
     token = pw.lower() if re.fullmatch(r"[0-9a-fA-F]{64}", pw) else \
         hashlib.sha256(hashlib.sha256(pw.encode()).hexdigest().encode()).hexdigest()
     status, res = server_request(cfg, "GET", "/admin/api.php?" + urllib.parse.urlencode({**query, "auth": token}))
-    if not res or "Not authorized" in str(res):  # sin auth válido v5 responde []
-        raise BadRequest(f"{cfg['nombre']}: API key o contraseña incorrecta")
+    if not res or "Not authorized" in str(res):  # without valid auth v5 answers []
+        raise BadRequest(tr("{name}: wrong API key or password", name=cfg["nombre"]))
     if not isinstance(res, dict):
-        raise BadRequest(f"{cfg['nombre']}: respuesta inesperada (HTTP {status}). ¿Es un Pi-hole?")
+        raise BadRequest(tr("{name}: unexpected response (HTTP {status}). Is it a Pi-hole?",
+                            name=cfg["nombre"], status=status))
     return res
 
 
@@ -552,7 +602,8 @@ def pihole_v6(cfg, method, path, missing_ok=False):
     status, res = server_request(cfg, "POST", "/api/auth", {"password": cfg["password"]})
     sid = res.get("session", {}).get("sid") if isinstance(res, dict) else None
     if not sid:
-        raise BadRequest(f"{cfg['nombre']}: contraseña incorrecta o API no disponible (HTTP {status})")
+        raise BadRequest(tr("{name}: wrong password or API not available (HTTP {status})",
+                            name=cfg["nombre"], status=status))
     auth = {"X-FTL-SID": sid}
     try:
         status, res = server_request(cfg, method, path, headers=auth)
@@ -562,7 +613,7 @@ def pihole_v6(cfg, method, path, missing_ok=False):
             raise http_error(cfg, status, res)
         return res
     finally:
-        try:  # Libera la sesión: Pi-hole v6 limita las sesiones simultáneas.
+        try:  # Release the session: Pi-hole v6 limits concurrent sessions.
             server_request(cfg, "DELETE", "/api/auth", headers=auth)
         except BadRequest:
             pass
@@ -581,11 +632,11 @@ def pihole_add(cfg, rec):
         q = {"customdns": "", "action": "add", "domain": rec["dominio"], "ip": rec["destino"]}
     res = pihole_v5(cfg, q)
     if not res.get("success"):
-        raise BadRequest(f"{cfg['nombre']}: {html.unescape(str(res.get('message') or 'error desconocido'))}")
+        raise BadRequest(f"{cfg['nombre']}: {html.unescape(str(res.get('message') or tr('unknown error')))}")
 
 
 def pihole_delete(cfg, rec):
-    """Borra el registro. Devuelve False si ya no existía en el servidor."""
+    """Deletes the record. Returns False when it no longer existed on the server."""
     cname = rec["tipo"] == "CNAME"
     if pihole_version(cfg) == "6":
         item = f"{rec['dominio']},{rec['destino']}" if cname else f"{rec['destino']} {rec['dominio']}"
@@ -601,7 +652,7 @@ def pihole_delete(cfg, rec):
         return True
     if "does not exist" in msg:
         return False
-    raise BadRequest(f"{cfg['nombre']}: {msg or 'error desconocido'}")
+    raise BadRequest(f"{cfg['nombre']}: {msg or tr('unknown error')}")
 
 
 def pihole_test(cfg):
@@ -611,17 +662,17 @@ def pihole_test(cfg):
     else:
         hosts = len(pihole_v5(cfg, {"customdns": "", "action": "get"}).get("data", []))
         cnames = len(pihole_v5(cfg, {"customcname": "", "action": "get"}).get("data", []))
-    return (f"Conectado a Pi-hole v{pihole_version(cfg)}: "
-            f"{hosts} registros DNS locales y {cnames} CNAME")
+    return tr("Connected to Pi-hole v{version}: {hosts} local DNS records and {cnames} CNAME",
+              version=pihole_version(cfg), hosts=hosts, cnames=cnames)
 
 
-# AdGuard Home (API /control, autenticación básica) ---------------------------
+# AdGuard Home (/control API, basic authentication) ---------------------------
 def adguard_call(cfg, method, path, body=None):
-    cred = base64.b64encode(f"{cfg['usuario']}:{cfg['password']}".encode()).decode()
+    cred = base64.b64encode(f"{cfg['user']}:{cfg['password']}".encode()).decode()
     status, res = server_request(cfg, method, "/control" + path, body,
                                  headers={"Authorization": "Basic " + cred})
     if status in (401, 403):
-        raise BadRequest(f"{cfg['nombre']}: usuario o contraseña incorrectos")
+        raise BadRequest(tr("{name}: wrong user or password", name=cfg["nombre"]))
     if status >= 300:
         raise http_error(cfg, status, res)
     return res
@@ -649,17 +700,18 @@ def adguard_delete(cfg, rec):
 def adguard_test(cfg):
     status = adguard_call(cfg, "GET", "/status")
     version = status.get("version", "") if isinstance(status, dict) else ""
-    return f"Conectado a AdGuard Home {version}: {len(adguard_rewrites(cfg))} reescrituras DNS".replace("  ", " ")
+    return tr("Connected to AdGuard Home {version}: {count} DNS rewrites",
+              version=version, count=len(adguard_rewrites(cfg))).replace("  ", " ")
 
 
-# Technitium DNS Server (API HTTP con token) ----------------------------------
+# Technitium DNS Server (HTTP API with token) ---------------------------------
 def technitium_call(cfg, path, params=None):
     q = {"token": cfg["token"], **(params or {})}
     status, res = server_request(cfg, "GET", f"/api/{path}?" + urllib.parse.urlencode(q))
     if not isinstance(res, dict):
-        raise http_error(cfg, status, res, "respuesta inesperada. ¿Es un Technitium DNS Server?")
+        raise http_error(cfg, status, res, tr("unexpected response. Is it a Technitium DNS Server?"))
     if res.get("status") == "invalid-token":
-        raise BadRequest(f"{cfg['nombre']}: token inválido o vencido")
+        raise BadRequest(tr("{name}: invalid or expired token", name=cfg["nombre"]))
     if res.get("status") != "ok":
         raise http_error(cfg, status, res, str(res.get("status")))
     return res.get("response") or {}
@@ -667,8 +719,8 @@ def technitium_call(cfg, path, params=None):
 
 def technitium_params(cfg, rec):
     p = {"domain": rec["dominio"], "type": rec["tipo"]}
-    if cfg.get("zona"):
-        p["zone"] = cfg["zona"]
+    if cfg.get("zone"):
+        p["zone"] = cfg["zone"]
     return p
 
 
@@ -709,16 +761,17 @@ def technitium_delete(cfg, rec):
 
 
 def technitium_test(cfg):
-    zonas = technitium_call(cfg, "zones/list").get("zones", [])
-    nombres = [z.get("name", "").lower() for z in zonas]
-    if cfg.get("zona") and cfg["zona"] not in nombres:
-        raise BadRequest(f"{cfg['nombre']}: la zona {cfg['zona']} no existe en el servidor")
-    return f"Conectado a Technitium DNS Server: {len(zonas)} zonas"
+    zones = technitium_call(cfg, "zones/list").get("zones", [])
+    names = [z.get("name", "").lower() for z in zones]
+    if cfg.get("zone") and cfg["zone"] not in names:
+        raise BadRequest(tr("{name}: zone {zone} does not exist on the server",
+                            name=cfg["nombre"], zone=cfg["zone"]))
+    return tr("Connected to Technitium DNS Server: {count} zones", count=len(zones))
 
 
-# PowerDNS Authoritative (API REST con X-API-Key) -----------------------------
+# PowerDNS Authoritative (REST API with X-API-Key) ----------------------------
 def pdns_zone(cfg):
-    return cfg["zona"].rstrip(".") + "."
+    return cfg["zone"].rstrip(".") + "."
 
 
 def pdns_call(cfg, method, body=None):
@@ -726,9 +779,10 @@ def pdns_call(cfg, method, body=None):
             f"/zones/{urllib.parse.quote(pdns_zone(cfg), safe='')}")
     status, res = server_request(cfg, method, path, body, headers={"X-API-Key": cfg["api_key"]})
     if status in (401, 403):
-        raise BadRequest(f"{cfg['nombre']}: API key incorrecta")
+        raise BadRequest(tr("{name}: wrong API key", name=cfg["nombre"]))
     if status == 404:
-        raise BadRequest(f"{cfg['nombre']}: la zona {pdns_zone(cfg)} no existe (o el server id es incorrecto)")
+        raise BadRequest(tr("{name}: zone {zone} does not exist (or the server id is wrong)",
+                            name=cfg["nombre"], zone=pdns_zone(cfg)))
     if status >= 300:
         raise http_error(cfg, status, res)
     return res
@@ -739,9 +793,10 @@ def pdns_content(rec):
 
 
 def pdns_add(cfg, rec):
-    zona, name = pdns_zone(cfg), rec["dominio"] + "."
-    if name != zona and not name.endswith("." + zona):
-        raise BadRequest(f"{cfg['nombre']}: {rec['dominio']} no pertenece a la zona {zona}")
+    zone, name = pdns_zone(cfg), rec["dominio"] + "."
+    if name != zone and not name.endswith("." + zone):
+        raise BadRequest(tr("{name}: {domain} does not belong to zone {zone}",
+                            name=cfg["nombre"], domain=rec["dominio"], zone=zone))
     rrsets = pdns_call(cfg, "GET").get("rrsets", [])
     if any(r["name"] == name and r["type"] in ("A", "AAAA", "CNAME") for r in rrsets):
         raise duplicate(cfg, rec["dominio"])
@@ -757,27 +812,28 @@ def pdns_delete(cfg, rec):
     records = (rrset or {}).get("records", [])
     if not any(x.get("content") == content for x in records):
         return False
-    resto = [x for x in records if x.get("content") != content]
-    change = {"name": name, "type": rec["tipo"], "changetype": "REPLACE" if resto else "DELETE"}
-    if resto:
-        change.update(ttl=rrset.get("ttl", 300), records=resto)
+    rest = [x for x in records if x.get("content") != content]
+    change = {"name": name, "type": rec["tipo"], "changetype": "REPLACE" if rest else "DELETE"}
+    if rest:
+        change.update(ttl=rrset.get("ttl", 300), records=rest)
     pdns_call(cfg, "PATCH", {"rrsets": [change]})
     return True
 
 
 def pdns_test(cfg):
     rrsets = pdns_call(cfg, "GET").get("rrsets", [])
-    return f"Conectado a PowerDNS Authoritative: zona {pdns_zone(cfg)} con {len(rrsets)} conjuntos de registros"
+    return tr("Connected to PowerDNS Authoritative: zone {zone} with {count} record sets",
+              zone=pdns_zone(cfg), count=len(rrsets))
 
 
-# NextDNS (nube; los registros son "Rewrites" del perfil) ---------------------
+# NextDNS (cloud; records are profile "Rewrites") ------------------------------
 def nextdns_call(cfg, method, path="", body=None):
-    status, res = server_request(cfg, method, f"/profiles/{cfg['perfil']}{path}", body,
+    status, res = server_request(cfg, method, f"/profiles/{cfg['profile']}{path}", body,
                                  headers={"X-Api-Key": cfg["api_key"]}, base=NEXTDNS_API)
     if status in (401, 403):
-        raise BadRequest(f"{cfg['nombre']}: API key incorrecta")
+        raise BadRequest(tr("{name}: wrong API key", name=cfg["nombre"]))
     if status == 404:
-        raise BadRequest(f"{cfg['nombre']}: el perfil {cfg['perfil']} no existe")
+        raise BadRequest(tr("{name}: profile {profile} does not exist", name=cfg["nombre"], profile=cfg["profile"]))
     if status >= 300 or (isinstance(res, dict) and res.get("errors")):
         raise http_error(cfg, status, res)
     return res.get("data") if isinstance(res, dict) else None
@@ -803,24 +859,24 @@ def nextdns_delete(cfg, rec):
 
 
 def nextdns_test(cfg):
-    perfil = nextdns_call(cfg, "GET") or {}
-    return (f"Conectado a NextDNS: perfil \"{perfil.get('name', cfg['perfil'])}\" con "
-            f"{len(perfil.get('rewrites', []))} rewrites")
+    profile = nextdns_call(cfg, "GET") or {}
+    return tr('Connected to NextDNS: profile "{profile}" with {count} rewrites',
+              profile=profile.get("name", cfg["profile"]), count=len(profile.get("rewrites", [])))
 
 
-# Control D (nube; los registros son reglas personalizadas SPOOF) -------------
+# Control D (cloud; records are SPOOF custom rules) ----------------------------
 def controld_call(cfg, method, path, form=None):
     status, res = server_request(cfg, method, path, form=form, base=CONTROLD_API,
                                  headers={"Authorization": "Bearer " + cfg["token"]})
     if status in (401, 403):
-        raise BadRequest(f"{cfg['nombre']}: token de API incorrecto o sin permiso de escritura")
+        raise BadRequest(tr("{name}: wrong API token or no write permission", name=cfg["nombre"]))
     if status >= 300 or (isinstance(res, dict) and res.get("success") is False):
         raise http_error(cfg, status, res)
     return res.get("body", {}) if isinstance(res, dict) else {}
 
 
 def controld_rules(cfg):
-    return controld_call(cfg, "GET", f"/profiles/{cfg['perfil']}/rules").get("rules", [])
+    return controld_call(cfg, "GET", f"/profiles/{cfg['profile']}/rules").get("rules", [])
 
 
 def controld_add(cfg, rec):
@@ -828,7 +884,7 @@ def controld_add(cfg, rec):
         raise duplicate(cfg, rec["dominio"])
     form = {"do": 2, "status": 1, "hostnames[]": [rec["dominio"]]}  # 2 = SPOOF
     form["via_v6" if rec["tipo"] == "AAAA" else "via"] = rec["destino"]
-    controld_call(cfg, "POST", f"/profiles/{cfg['perfil']}/rules", form=form)
+    controld_call(cfg, "POST", f"/profiles/{cfg['profile']}/rules", form=form)
 
 
 def controld_delete(cfg, rec):
@@ -837,25 +893,52 @@ def controld_delete(cfg, rec):
         return r.get("PK") == rec["dominio"] and rec["destino"] in (action.get("via"), action.get("via_v6"))
     if not any(matches(r) for r in controld_rules(cfg)):
         return False
-    controld_call(cfg, "DELETE", f"/profiles/{cfg['perfil']}/rules/"
+    controld_call(cfg, "DELETE", f"/profiles/{cfg['profile']}/rules/"
                   + urllib.parse.quote(rec["dominio"], safe=""))
     return True
 
 
 def controld_test(cfg):
-    perfiles = controld_call(cfg, "GET", "/profiles").get("profiles", [])
-    perfil = next((p for p in perfiles if p.get("PK") == cfg["perfil"]), None)
-    if not perfil:
-        raise BadRequest(f"{cfg['nombre']}: el perfil {cfg['perfil']} no existe en la cuenta")
-    return f"Conectado a Control D: perfil \"{perfil.get('name', cfg['perfil'])}\" con {len(controld_rules(cfg))} reglas"
+    profiles = controld_call(cfg, "GET", "/profiles").get("profiles", [])
+    profile = next((p for p in profiles if p.get("PK") == cfg["profile"]), None)
+    if not profile:
+        raise BadRequest(tr("{name}: profile {profile} does not exist in the account",
+                            name=cfg["nombre"], profile=cfg["profile"]))
+    return tr('Connected to Control D: profile "{profile}" with {count} rules',
+              profile=profile.get("name", cfg["profile"]), count=len(controld_rules(cfg)))
 
 
 # SSH -------------------------------------------------------------------------
+# The remote scripts report errors as "LMERR <code> <argument>" (and optional
+# detail lines); script_error() turns them into translated messages.
+SCRIPT_ERRORS = {
+    "no_dir": "folder {arg} does not exist",
+    "not_writable": "the SSH user cannot write to {arg}",
+    "no_command": "command {arg} was not found",
+    "reload_failed": "the reload command ({arg}) failed and the previous file was restored",
+    "reload_failed_uci": "the reload command ({arg}) failed",
+    "no_nsupdate": "nsupdate is not installed (package bind9-dnsutils or bind-utils)",
+    "no_key": "cannot read key file {arg}",
+    "no_session_key": "named's session key was not found (is BIND running? can the SSH user read it?)",
+    "not_openwrt": "it is not an OpenWrt (the uci command is missing)",
+}
+
+
+def script_error(err):
+    lines = err.strip().splitlines()
+    m = re.match(r"LMERR (\w+) ?(.*)", lines[0]) if lines else None
+    if not m or m[1] not in SCRIPT_ERRORS:
+        return err.strip()
+    msg = tr(SCRIPT_ERRORS[m[1]], arg=m[2])
+    detail = "\n".join(lines[1:]).strip()
+    return f"{msg}: {detail}" if detail else msg
+
+
 def ssh_exec(cfg, script, args=(), stdin=""):
-    """Ejecuta un script sh en el servidor por SSH (clave privada de la integración)."""
+    """Runs a sh script on the server over SSH (with the integration's private key)."""
     key = cfg.get("ssh_key", "")
     if not key:
-        raise BadRequest(f"{cfg['nombre']}: falta la clave privada SSH")
+        raise BadRequest(tr("{name}: the SSH private key is missing", name=cfg["nombre"]))
     os.makedirs(os.path.dirname(KNOWN_HOSTS), exist_ok=True)
     remote = "sh -c " + shlex.quote(script) + " lm " + " ".join(shlex.quote(str(a)) for a in args)
     with tempfile.TemporaryDirectory(prefix="lm-ssh-") as d:
@@ -869,19 +952,21 @@ def ssh_exec(cfg, script, args=(), stdin=""):
         try:
             r = subprocess.run(cmd, input=stdin, capture_output=True, text=True, timeout=90)
         except subprocess.TimeoutExpired:
-            raise BadRequest(f"{cfg['nombre']}: el servidor no respondió a tiempo por SSH")
+            raise BadRequest(tr("{name}: the server did not answer over SSH in time", name=cfg["nombre"]))
         except FileNotFoundError:
-            raise BadRequest("Falta el cliente ssh donde corre linkManager (paquete openssh-client)")
+            raise BadRequest(tr("The ssh client is missing where linkManager runs (package openssh-client)"))
     err = r.stderr.strip()
     if r.returncode == 255:
-        detalle = err.splitlines()[-1] if err else "error de conexión"
+        detail = err.splitlines()[-1] if err else tr("connection error")
         if "Permission denied" in err:
-            detalle = "la clave no está autorizada (copiá la clave pública en authorized_keys del servidor)"
+            detail = tr("the key is not authorized (copy the public key to the server's authorized_keys)")
         elif "IDENTIFICATION HAS CHANGED" in err:
-            detalle = (f"cambió la clave de host del servidor; si es esperado, borrá su línea de {KNOWN_HOSTS}")
-        raise BadRequest(f"{cfg['nombre']}: no se pudo conectar por SSH: {detalle}")
+            detail = tr("the server's host key changed; if that is expected, delete its line from {file}",
+                        file=KNOWN_HOSTS)
+        raise BadRequest(tr("{name}: could not connect over SSH: {detail}", name=cfg["nombre"], detail=detail))
     if r.returncode != 0:
-        raise BadRequest(f"{cfg['nombre']}: {err or f'error {r.returncode} en el servidor'}")
+        raise BadRequest(f"{cfg['nombre']}: "
+                         + (script_error(err) if err else tr("error {code} on the server", code=r.returncode)))
     return r.stdout
 
 
@@ -890,7 +975,7 @@ def ssh_keygen(args, stdin=None):
         return subprocess.run(["ssh-keygen", *args], input=stdin, capture_output=True,
                               text=True, timeout=30)
     except FileNotFoundError:
-        raise BadRequest("Falta ssh-keygen donde corre linkManager (paquete openssh-client)")
+        raise BadRequest(tr("ssh-keygen is missing where linkManager runs (package openssh-client)"))
 
 
 def generate_ssh_key():
@@ -898,42 +983,42 @@ def generate_ssh_key():
         kf = os.path.join(d, "id")
         r = ssh_keygen(["-q", "-t", "ed25519", "-N", "", "-C", "linkmanager", "-f", kf])
         if r.returncode != 0:
-            raise BadRequest(f"No se pudo generar la clave: {r.stderr.strip()}")
+            raise BadRequest(tr("Could not generate the key: {error}", error=r.stderr.strip()))
         with open(kf) as f, open(kf + ".pub") as g:
             return {"privada": f.read(), "publica": g.read().strip()}
 
 
 def ssh_public_key(private):
-    """Valida la clave privada y devuelve su clave pública."""
+    """Validates the private key and returns its public key."""
     with tempfile.TemporaryDirectory(prefix="lm-key-") as d:
         kf = os.path.join(d, "id")
         with os.fdopen(os.open(kf, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as f:
             f.write(private.strip() + "\n")
         r = ssh_keygen(["-y", "-P", "", "-f", kf])
     if r.returncode != 0:
-        raise BadRequest("La clave privada SSH no es válida o tiene contraseña (usá una sin contraseña)")
+        raise BadRequest(tr("The SSH private key is not valid or has a passphrase (use one without passphrase)"))
     return r.stdout.strip() + " linkmanager"
 
 
-# Archivo propio de linkManager en el servidor, editado por SSH.
-# write: escribe el archivo, ejecuta el comando de recarga y, si falla, restaura
-# el archivo anterior y vuelve a recargar para dejar el servicio como estaba.
+# linkManager's own file on the server, edited over SSH.
+# write: writes the file and runs the reload command; if it fails, restores the
+# previous file and reloads again to leave the service as it was.
 FILE_SCRIPT = r'''
 F=$1; OP=$2; RELOAD=$3
 case "$OP" in
 read) [ -f "$F" ] && cat "$F"; exit 0 ;;
 check)
   d=$(dirname "$F")
-  [ -d "$d" ] || { echo "no existe la carpeta $d" >&2; exit 2; }
-  [ -w "$d" ] || { echo "el usuario SSH no puede escribir en $d" >&2; exit 2; }
+  [ -d "$d" ] || { echo "LMERR no_dir $d" >&2; exit 2; }
+  [ -w "$d" ] || { echo "LMERR not_writable $d" >&2; exit 2; }
   if [ -n "$RELOAD" ]; then
     c=${RELOAD%% *}
-    command -v "$c" >/dev/null 2>&1 || { echo "no se encontró el comando $c" >&2; exit 2; }
+    command -v "$c" >/dev/null 2>&1 || { echo "LMERR no_command $c" >&2; exit 2; }
   fi
   exit 0 ;;
 write)
-  # Las copias temporales van a /tmp: dnsmasq, por ejemplo, carga todos los
-  # archivos de su carpeta de configuración y leería también la copia.
+  # Temporary copies go to /tmp: dnsmasq, for instance, loads every file in
+  # its configuration folder and would also read the copy.
   mkdir -p "$(dirname "$F")" || exit 2
   N=$(mktemp) || exit 2; P=""
   if [ -f "$F" ]; then P=$(mktemp) && cat "$F" > "$P" || exit 2; fi
@@ -942,83 +1027,85 @@ write)
   if [ -z "$RELOAD" ] || out=$(sh -c "$RELOAD" 2>&1); then rm -f "$P"; exit 0; fi
   if [ -n "$P" ]; then cat "$P" > "$F"; rm -f "$P"; else rm -f "$F"; fi
   sh -c "$RELOAD" >/dev/null 2>&1
-  echo "falló el comando de recarga ($RELOAD) y se restauró el archivo anterior: $out" >&2
+  printf 'LMERR reload_failed %s\n%s\n' "$RELOAD" "$out" >&2
   exit 3 ;;
 esac
 '''
 
 
 def _unbound_line(r):
-    destino = r["destino"] + "." if r["tipo"] == "CNAME" else r["destino"]
-    return f'    local-data: "{r["dominio"]}. IN {r["tipo"]} {destino}"'
+    target = r["destino"] + "." if r["tipo"] == "CNAME" else r["destino"]
+    return f'    local-data: "{r["dominio"]}. IN {r["tipo"]} {target}"'
 
 
 FILE_FORMATS = {
-    # "IP nombre": Blocky, Knot Resolver, CoreDNS, PowerDNS Recursor
-    "hosts": {"cabecera": [FILE_HEADER],
-              "linea": lambda r: f"{r['destino']} {r['dominio']}",
-              "nombres": lambda l: l.split()[1:]},
-    "dnsmasq": {"cabecera": [FILE_HEADER],
-                "linea": lambda r: (f"cname={r['dominio']},{r['destino']}" if r["tipo"] == "CNAME"
-                                    else f"host-record={r['dominio']},{r['destino']}"),
-                "nombres": lambda l: [l.split("=", 1)[1].split(",")[0]] if "=" in l else []},
-    "unbound": {"cabecera": [FILE_HEADER, "server:"],
-                "linea": _unbound_line,
-                "nombres": lambda l: re.findall(r'local-data:\s*"(\S+?)\.?\s', l)},
-    "cloaking": {"cabecera": [FILE_HEADER],  # dnscrypt-proxy: "nombre IP-o-nombre"
-                 "linea": lambda r: f"{r['dominio']} {r['destino']}",
-                 "nombres": lambda l: l.split()[:1]},
+    # "IP name": Blocky, Knot Resolver, CoreDNS, PowerDNS Recursor
+    "hosts": {"header": [FILE_HEADER],
+              "line": lambda r: f"{r['destino']} {r['dominio']}",
+              "names": lambda l: l.split()[1:]},
+    "dnsmasq": {"header": [FILE_HEADER],
+                "line": lambda r: (f"cname={r['dominio']},{r['destino']}" if r["tipo"] == "CNAME"
+                                   else f"host-record={r['dominio']},{r['destino']}"),
+                "names": lambda l: [l.split("=", 1)[1].split(",")[0]] if "=" in l else []},
+    "unbound": {"header": [FILE_HEADER, "server:"],
+                "line": _unbound_line,
+                "names": lambda l: re.findall(r'local-data:\s*"(\S+?)\.?\s', l)},
+    "cloaking": {"header": [FILE_HEADER],  # dnscrypt-proxy: "name IP-or-name"
+                 "line": lambda r: f"{r['dominio']} {r['destino']}",
+                 "names": lambda l: l.split()[:1]},
 }
 
 
 def file_format(cfg):
-    return FILE_FORMATS[PROVIDERS[cfg["tipo"]]["formato"]]
+    return FILE_FORMATS[PROVIDERS[cfg["tipo"]]["file_format"]]
 
 
 def file_lines(cfg):
-    return ssh_exec(cfg, FILE_SCRIPT, [cfg["archivo"], "read", ""]).splitlines()
+    return ssh_exec(cfg, FILE_SCRIPT, [cfg["file"], "read", ""]).splitlines()
 
 
 def file_write(cfg, lines):
-    ssh_exec(cfg, FILE_SCRIPT, [cfg["archivo"], "write", cfg.get("recarga", "")], "\n".join(lines) + "\n")
+    ssh_exec(cfg, FILE_SCRIPT, [cfg["file"], "write", cfg.get("reload_command", "")], "\n".join(lines) + "\n")
 
 
 def file_records(cfg, lines):
-    return [l for l in lines if l.strip() and not l.lstrip().startswith("#") and file_format(cfg)["nombres"](l)]
+    return [l for l in lines if l.strip() and not l.lstrip().startswith("#") and file_format(cfg)["names"](l)]
 
 
 def file_add(cfg, rec):
     fmt, lines = file_format(cfg), file_lines(cfg)
-    if any(rec["dominio"] in fmt["nombres"](l) for l in file_records(cfg, lines)):
-        raise BadRequest(f"{cfg['nombre']}: ya existe un registro para {rec['dominio']} en {cfg['archivo']}")
-    file_write(cfg, (lines or list(fmt["cabecera"])) + [fmt["linea"](rec)])
+    if any(rec["dominio"] in fmt["names"](l) for l in file_records(cfg, lines)):
+        raise BadRequest(tr("{name}: a record for {domain} already exists in {file}",
+                            name=cfg["nombre"], domain=rec["dominio"], file=cfg["file"]))
+    file_write(cfg, (lines or list(fmt["header"])) + [fmt["line"](rec)])
 
 
 def file_delete(cfg, rec):
-    lines, linea = file_lines(cfg), file_format(cfg)["linea"](rec)
-    if linea not in lines:
+    lines, line = file_lines(cfg), file_format(cfg)["line"](rec)
+    if line not in lines:
         return False
-    file_write(cfg, [l for l in lines if l != linea])
+    file_write(cfg, [l for l in lines if l != line])
     return True
 
 
 def file_test(cfg):
-    ssh_exec(cfg, FILE_SCRIPT, [cfg["archivo"], "check", cfg.get("recarga", "")])
+    ssh_exec(cfg, FILE_SCRIPT, [cfg["file"], "check", cfg.get("reload_command", "")])
     n = len(file_records(cfg, file_lines(cfg)))
-    return (f"Conectado por SSH a {cfg['ssh_host']}: {n} registros de linkManager en {cfg['archivo']}")
+    return tr("Connected over SSH to {host}: {count} linkManager records in {file}",
+              host=cfg["ssh_host"], count=n, file=cfg["file"])
 
 
-# BIND9: actualización dinámica (RFC 2136) con nsupdate en el propio servidor.
+# BIND9: dynamic update (RFC 2136) with nsupdate on the server itself.
 NSUPDATE_SCRIPT = r'''
 KEY=$1; OP=$2; PORT=${3:-53}
-command -v nsupdate >/dev/null 2>&1 || { echo "nsupdate no está instalado (paquete bind9-dnsutils o bind-utils)" >&2; exit 2; }
+command -v nsupdate >/dev/null 2>&1 || { echo "LMERR no_nsupdate" >&2; exit 2; }
 if [ "$OP" = check ]; then
-  if [ -n "$KEY" ]; then [ -r "$KEY" ] || { echo "no se puede leer la clave $KEY" >&2; exit 2; }
+  if [ -n "$KEY" ]; then [ -r "$KEY" ] || { echo "LMERR no_key $KEY" >&2; exit 2; }
   else
     for k in /run/named/session.key /var/run/named/session.key /var/cache/bind/session.key; do
       [ -r "$k" ] && exit 0
     done
-    echo "no se encontró la clave de sesión de named (¿está corriendo BIND? ¿el usuario SSH puede leerla?)" >&2; exit 2
+    echo "LMERR no_session_key" >&2; exit 2
   fi
   exit 0
 fi
@@ -1027,18 +1114,31 @@ rc=$?; [ $rc -eq 0 ] || { echo "$out" | grep -v "Communication with ::1#" >&2; e
 '''
 
 
+def bind_header(cfg):
+    # With nsupdate -l (no TSIG key) neither "server" (not allowed) nor "zone"
+    # (BIND rejects the session key with BADKEY) is sent: nsupdate finds the zone.
+    if not cfg.get("tsig_key"):
+        return []
+    cmds = []
+    if cfg.get("dns_server"):
+        cmds.append(f"server {cfg['dns_server']} {cfg.get('dns_port') or 53}")
+    if cfg.get("zone"):
+        cmds.append(f"zone {cfg['zone']}")
+    return cmds
+
+
 def bind_args(cfg, op):
-    return [cfg.get("clave_tsig", ""), op, cfg.get("puerto_dns") or 53]
+    return [cfg.get("tsig_key", ""), op, cfg.get("dns_port") or 53]
 
 
 def bind_update(cfg, rec, add):
-    destino = rec["destino"] + "." if rec["tipo"] == "CNAME" else rec["destino"]
+    target = rec["destino"] + "." if rec["tipo"] == "CNAME" else rec["destino"]
     name = rec["dominio"] + "."
     cmds = bind_header(cfg)
     if add:
-        cmds += [f"prereq nxdomain {name}", f"update add {name} {cfg.get('ttl') or 300} {rec['tipo']} {destino}"]
+        cmds += [f"prereq nxdomain {name}", f"update add {name} {cfg.get('ttl') or 300} {rec['tipo']} {target}"]
     else:
-        cmds += [f"prereq yxrrset {name} {rec['tipo']} {destino}", f"update delete {name} {rec['tipo']} {destino}"]
+        cmds += [f"prereq yxrrset {name} {rec['tipo']} {target}", f"update delete {name} {rec['tipo']} {target}"]
     try:
         ssh_exec(cfg, NSUPDATE_SCRIPT, bind_args(cfg, "update"), "\n".join(cmds + ["send", ""]))
     except BadRequest as ex:
@@ -1048,25 +1148,13 @@ def bind_update(cfg, rec, add):
         if "NXRRSET" in msg and not add:
             return False
         if "REFUSED" in msg:
-            raise BadRequest(f"{cfg['nombre']}: BIND rechazó la actualización; la zona tiene que tener "
-                             "update-policy local; (o allow-update con la clave TSIG)")
+            raise BadRequest(tr("{name}: BIND refused the update; the zone must have update-policy local; "
+                                "(or allow-update with the TSIG key)", name=cfg["nombre"]))
         if "NOTZONE" in msg or "enclosing zone" in msg or "NOTAUTH" in msg:
-            raise BadRequest(f"{cfg['nombre']}: {rec['dominio']} no está en una zona de este BIND")
+            raise BadRequest(tr("{name}: {domain} is not in a zone of this BIND",
+                                name=cfg["nombre"], domain=rec["dominio"]))
         raise
     return True
-
-
-def bind_header(cfg):
-    # Con nsupdate -l (sin clave TSIG) no se manda "server" (no lo admite) ni "zone"
-    # (BIND rechaza la clave de sesión con BADKEY): nsupdate encuentra la zona solo.
-    if not cfg.get("clave_tsig"):
-        return []
-    cmds = []
-    if cfg.get("servidor_dns"):
-        cmds.append(f"server {cfg['servidor_dns']} {cfg.get('puerto_dns') or 53}")
-    if cfg.get("zona"):
-        cmds.append(f"zone {cfg['zona']}")
-    return cmds
 
 
 def bind_add(cfg, rec):
@@ -1079,28 +1167,30 @@ def bind_delete(cfg, rec):
 
 def bind_test(cfg):
     ssh_exec(cfg, NSUPDATE_SCRIPT, bind_args(cfg, "check"))
-    modo = f"clave {cfg['clave_tsig']}" if cfg.get("clave_tsig") else "clave de sesión local (nsupdate -l)"
-    if not cfg.get("zona"):
-        return (f"Conectado por SSH a {cfg['ssh_host']}: nsupdate disponible con {modo}. "
-                "Indicá la zona para que la prueba también verifique que BIND acepta actualizaciones.")
-    # Actualización vacía con un prerrequisito siempre cierto: verifica conexión y permisos sin cambiar nada.
+    mode = (tr("key {file}", file=cfg["tsig_key"]) if cfg.get("tsig_key")
+            else tr("the local session key (nsupdate -l)"))
+    if not cfg.get("zone"):
+        return tr("Connected over SSH to {host}: nsupdate available with {mode}. Set the zone so the "
+                  "test also checks that BIND accepts updates.", host=cfg["ssh_host"], mode=mode)
+    # Empty update with an always-true prerequisite: checks connection and permissions without changes.
     try:
         ssh_exec(cfg, NSUPDATE_SCRIPT, bind_args(cfg, "update"),
-                 "\n".join(bind_header(cfg) + [f"prereq yxdomain {cfg['zona']}.", "send", ""]))
+                 "\n".join(bind_header(cfg) + [f"prereq yxdomain {cfg['zone']}.", "send", ""]))
     except BadRequest as ex:
         if "REFUSED" in str(ex):
-            raise BadRequest(f"{cfg['nombre']}: BIND rechazó la actualización; la zona {cfg['zona']} tiene "
-                             "que tener update-policy local; (o allow-update con la clave TSIG)")
+            raise BadRequest(tr("{name}: BIND refused the update; zone {zone} must have update-policy local; "
+                                "(or allow-update with the TSIG key)", name=cfg["nombre"], zone=cfg["zone"]))
         raise
-    return f"Conectado a BIND por SSH ({cfg['ssh_host']}): la zona {cfg['zona']} acepta actualizaciones con {modo}"
+    return tr("Connected to BIND over SSH ({host}): zone {zone} accepts updates with {mode}",
+              host=cfg["ssh_host"], zone=cfg["zone"], mode=mode)
 
 
-# OpenWrt: registros en el dnsmasq del router con uci (Network → DHCP and DNS).
+# OpenWrt: records in the router's dnsmasq through uci (Network → DHCP and DNS).
 UCI_SCRIPT = r'''
 OP=$1; T=$2; N=$3; V=$4; RELOAD=$5
-command -v uci >/dev/null 2>&1 || { echo "no es un OpenWrt (no está el comando uci)" >&2; exit 2; }
+command -v uci >/dev/null 2>&1 || { echo "LMERR not_openwrt" >&2; exit 2; }
 secs() { uci -X show dhcp | sed -n "s/^dhcp\.\([^.=]*\)=$1\$/\1/p"; }
-find_secs() {  # $1 tipo de sección, $2 opción nombre, $3 opción valor
+find_secs() {  # $1 section type, $2 name option, $3 value option
   for s in $(secs "$1"); do
     [ "$(uci -q get dhcp.$s.$2)" = "$N" ] || continue
     [ -z "$4" ] || [ "$(uci -q get dhcp.$s.$3)" = "$V" ] || continue
@@ -1110,249 +1200,256 @@ find_secs() {  # $1 tipo de sección, $2 opción nombre, $3 opción valor
 case "$OP" in
 check) echo "$(secs domain | wc -l) $(secs cname | wc -l)"; exit 0 ;;
 add)
-  if [ -n "$(find_secs domain name ip)$(find_secs cname cname target)" ]; then echo "YA_EXISTE" >&2; exit 4; fi
+  if [ -n "$(find_secs domain name ip)$(find_secs cname cname target)" ]; then echo "EXISTS" >&2; exit 4; fi
   if [ "$T" = CNAME ]; then s=$(uci add dhcp cname); uci set "dhcp.$s.cname=$N"; uci set "dhcp.$s.target=$V"
   else s=$(uci add dhcp domain); uci set "dhcp.$s.name=$N"; uci set "dhcp.$s.ip=$V"; fi ;;
 delete)
   if [ "$T" = CNAME ]; then ss=$(find_secs cname cname target 1); else ss=$(find_secs domain name ip 1); fi
-  [ -n "$ss" ] || { echo NO_EXISTE; exit 0; }
+  [ -n "$ss" ] || { echo NOT_FOUND; exit 0; }
   for s in $ss; do uci delete "dhcp.$s"; done ;;
 esac
 uci commit dhcp || exit 2
-[ -z "$RELOAD" ] || out=$(sh -c "$RELOAD" 2>&1) || { echo "falló el comando de recarga ($RELOAD): $out" >&2; exit 3; }
+[ -z "$RELOAD" ] || out=$(sh -c "$RELOAD" 2>&1) || { printf 'LMERR reload_failed_uci %s\n%s\n' "$RELOAD" "$out" >&2; exit 3; }
 echo OK
 '''
 
 
 def openwrt_add(cfg, rec):
     try:
-        ssh_exec(cfg, UCI_SCRIPT, ["add", rec["tipo"], rec["dominio"], rec["destino"], cfg.get("recarga", "")])
+        ssh_exec(cfg, UCI_SCRIPT, ["add", rec["tipo"], rec["dominio"], rec["destino"], cfg.get("reload_command", "")])
     except BadRequest as ex:
-        if "YA_EXISTE" in str(ex):
+        if "EXISTS" in str(ex):
             raise duplicate(cfg, rec["dominio"])
         raise
 
 
 def openwrt_delete(cfg, rec):
-    out = ssh_exec(cfg, UCI_SCRIPT, ["delete", rec["tipo"], rec["dominio"], rec["destino"], cfg.get("recarga", "")])
-    return "NO_EXISTE" not in out
+    out = ssh_exec(cfg, UCI_SCRIPT, ["delete", rec["tipo"], rec["dominio"], rec["destino"],
+                                     cfg.get("reload_command", "")])
+    return "NOT_FOUND" not in out
 
 
 def openwrt_test(cfg):
-    dominios, cnames = (ssh_exec(cfg, UCI_SCRIPT, ["check", "", "", "", ""]).split() + ["0", "0"])[:2]
-    return f"Conectado por SSH a OpenWrt ({cfg['ssh_host']}): {dominios} nombres locales y {cnames} CNAME"
+    domains, cnames = (ssh_exec(cfg, UCI_SCRIPT, ["check", "", "", "", ""]).split() + ["0", "0"])[:2]
+    return tr("Connected over SSH to OpenWrt ({host}): {domains} local names and {cnames} CNAME",
+              host=cfg["ssh_host"], domains=domains, cnames=cnames)
 
 
-# Campos comunes -------------------------------------------------------------
-def url_field(placeholder, puerto=None, ayuda="Si ponés solo la IP se usa http://"):
-    return {"id": "url", "etiqueta": "IP o URL del servidor", "tipo": "text", "requerido": True,
-            "formato": "url", "puerto": puerto, "placeholder": placeholder,
-            "ayuda": ayuda + (f" y el puerto {puerto}." if puerto else ".")}
+# Common fields ---------------------------------------------------------------
+# Field metadata: id (key stored in integraciones.json), label, type (text,
+# password, select, checkbox, number, ssh_key), required, secret (never sent back
+# to the browser), format (validation), default, help, placeholder, options.
+# Labels, help texts, placeholders and instructions are translated by tr().
+def url_field(placeholder, port=None, help_text="If you enter only the IP, http:// is used"):
+    return {"id": "url", "label": "Server IP or URL", "type": "text", "required": True,
+            "format": "url", "port": port, "placeholder": placeholder,
+            "help": help_text if not port else help_text + " (port {port})".replace("{port}", str(port))}
 
 
-TLS_FIELD = {"id": "verify_tls", "etiqueta": "Verificar el certificado HTTPS", "tipo": "checkbox",
-             "defecto": True, "ayuda": "Desmarcalo si usa un certificado autofirmado."}
-TTL_FIELD = {"id": "ttl", "etiqueta": "TTL de los registros (segundos)", "tipo": "number",
-             "defecto": 300, "min": 30, "max": 604800}
+TLS_FIELD = {"id": "verify_tls", "label": "Verify the HTTPS certificate", "type": "checkbox",
+             "default": True, "help": "Uncheck it if the server uses a self-signed certificate."}
+TTL_FIELD = {"id": "ttl", "label": "Record TTL (seconds)", "type": "number",
+             "default": 300, "min": 30, "max": 604800}
 
 
-def ssh_fields(usuario="root"):
+def ssh_fields(user="root"):
     return [
-        {"id": "ssh_host", "etiqueta": "IP o nombre del servidor", "tipo": "text", "requerido": True,
-         "formato": "host", "placeholder": "192.0.2.53"},
-        {"id": "ssh_port", "etiqueta": "Puerto SSH", "tipo": "number", "defecto": 22, "min": 1, "max": 65535},
-        {"id": "ssh_user", "etiqueta": "Usuario SSH", "tipo": "text", "defecto": usuario, "requerido": True,
-         "formato": "usuario",
-         "ayuda": "Tiene que poder escribir el archivo y ejecutar el comando de recarga (lo más simple es root)."},
-        {"id": "ssh_key", "etiqueta": "Clave privada SSH", "tipo": "ssh_key", "requerido": True, "secreto": True,
-         "ayuda": "Generá un par de claves acá y copiá la clave pública en ~/.ssh/authorized_keys del "
-                  "servidor, o pegá una clave privada sin contraseña."},
+        {"id": "ssh_host", "label": "Server IP or name", "type": "text", "required": True,
+         "format": "host", "placeholder": "192.0.2.53"},
+        {"id": "ssh_port", "label": "SSH port", "type": "number", "default": 22, "min": 1, "max": 65535},
+        {"id": "ssh_user", "label": "SSH user", "type": "text", "default": user, "required": True,
+         "format": "user",
+         "help": "It must be able to write the file and run the reload command (root is the simplest)."},
+        {"id": "ssh_key", "label": "SSH private key", "type": "ssh_key", "required": True, "secret": True,
+         "help": "Generate a key pair here and copy the public key to the server's ~/.ssh/authorized_keys, "
+                 "or paste a private key without passphrase."},
     ]
 
 
-def file_fields(ruta, recarga, ayuda_recarga=None):
+def file_fields(path, reload_command, reload_help=None):
     return [
-        {"id": "archivo", "etiqueta": "Archivo de registros en el servidor", "tipo": "text", "defecto": ruta,
-         "requerido": True, "formato": "ruta",
-         "ayuda": "linkManager escribe sus registros solo en este archivo; no toca el resto de la configuración."},
-        {"id": "recarga", "etiqueta": "Comando para aplicar los cambios", "tipo": "text", "defecto": recarga,
-         "formato": "comando",
-         "ayuda": ayuda_recarga or "Se ejecuta en el servidor después de cada cambio. Si falla, se "
-                                   "restaura el archivo anterior. Vacío: no ejecuta nada."},
+        {"id": "file", "label": "Records file on the server", "type": "text", "default": path,
+         "required": True, "format": "path",
+         "help": "linkManager only writes its records to this file; it does not touch the rest of the configuration."},
+        {"id": "reload_command", "label": "Command to apply the changes", "type": "text",
+         "default": reload_command, "format": "command",
+         "help": reload_help or "Runs on the server after every change. If it fails, the previous file "
+                                "is restored. Empty: nothing is run."},
     ]
 
 
-GRUPO_API, GRUPO_NUBE, GRUPO_SSH = "API del servidor", "Servicios en la nube", "Por SSH"
-TODOS, SOLO_IP = ["A", "AAAA", "CNAME"], ["A", "AAAA"]
+GROUP_API, GROUP_CLOUD, GROUP_SSH = "Server API", "Cloud services", "Over SSH"
+ALL_RECORDS, IP_RECORDS = ["A", "AAAA", "CNAME"], ["A", "AAAA"]
 
 
-def _ssh_file_provider(nombre, formato, registros, ruta, recarga, instrucciones, ayuda_recarga=None):
-    return {"nombre": nombre, "grupo": GRUPO_SSH, "registros": registros, "formato": formato,
-            "instrucciones": instrucciones, "campos": ssh_fields() + file_fields(ruta, recarga, ayuda_recarga),
+def _ssh_file_provider(name, file_format_name, records, path, reload_command, instructions, reload_help=None):
+    return {"name": name, "group": GROUP_SSH, "records": records, "file_format": file_format_name,
+            "instructions": instructions, "fields": ssh_fields() + file_fields(path, reload_command, reload_help),
             "add": file_add, "delete": file_delete, "test": file_test}
 
 
 PROVIDERS = {
     "pihole": {
-        "nombre": "Pi-hole", "grupo": GRUPO_API, "registros": TODOS,
-        "instrucciones": "Funciona con Pi-hole v5 y v6.",
-        "campos": [
-            url_field("192.0.2.10  o  https://pi.hole", ayuda="Sin /admin. Si ponés solo la IP se usa http://"),
-            {"id": "version", "etiqueta": "Versión", "tipo": "select", "defecto": "auto",
-             "opciones": [["auto", "Detectar automáticamente"], ["6", "Pi-hole v6"], ["5", "Pi-hole v5"]]},
-            {"id": "password", "etiqueta": "Contraseña o API key", "tipo": "password",
-             "requerido": True, "secreto": True,
-             "ayuda": "v6: contraseña web o app password. v5: token de la API "
-                      "(Settings → API → Show API token) o la contraseña web."},
+        "name": "Pi-hole", "group": GROUP_API, "records": ALL_RECORDS,
+        "instructions": "Works with Pi-hole v5 and v6.",
+        "fields": [
+            url_field("192.0.2.10  or  https://pi.hole",
+                      help_text="Without /admin. If you enter only the IP, http:// is used"),
+            {"id": "version", "label": "Version", "type": "select", "default": "auto",
+             "options": [["auto", "Detect automatically"], ["6", "Pi-hole v6"], ["5", "Pi-hole v5"]]},
+            {"id": "password", "label": "Password or API key", "type": "password",
+             "required": True, "secret": True,
+             "help": "v6: web password or app password. v5: API token "
+                     "(Settings → API → Show API token) or the web password."},
             TLS_FIELD,
         ],
         "add": pihole_add, "delete": pihole_delete, "test": pihole_test,
     },
     "adguard": {
-        "nombre": "AdGuard Home", "grupo": GRUPO_API, "registros": TODOS,
-        "instrucciones": "Los registros se crean como reescrituras DNS (Filters → DNS rewrites).",
-        "campos": [
-            url_field("192.0.2.10  o  https://adguard.home",
-                      ayuda="La dirección del panel web. Si ponés solo la IP se usa http://"),
-            {"id": "usuario", "etiqueta": "Usuario", "tipo": "text", "requerido": True},
-            {"id": "password", "etiqueta": "Contraseña", "tipo": "password", "requerido": True, "secreto": True},
+        "name": "AdGuard Home", "group": GROUP_API, "records": ALL_RECORDS,
+        "instructions": "Records are created as DNS rewrites (Filters → DNS rewrites).",
+        "fields": [
+            url_field("192.0.2.10  or  https://adguard.home",
+                      help_text="The web panel address. If you enter only the IP, http:// is used"),
+            {"id": "user", "label": "User", "type": "text", "required": True},
+            {"id": "password", "label": "Password", "type": "password", "required": True, "secret": True},
             TLS_FIELD,
         ],
         "add": adguard_add, "delete": adguard_delete, "test": adguard_test,
     },
     "technitium": {
-        "nombre": "Technitium DNS Server", "grupo": GRUPO_API, "registros": TODOS,
-        "instrucciones": "Creá un token en Administration → Sessions → Create Token. El dominio del "
-                         "link tiene que estar dentro de una zona primaria del servidor (por ejemplo home.arpa).",
-        "campos": [
-            url_field("192.0.2.10  o  https://dns.home.arpa:53443", puerto=5380),
-            {"id": "token", "etiqueta": "Token de la API", "tipo": "password", "requerido": True, "secreto": True},
-            {"id": "zona", "etiqueta": "Zona (opcional)", "tipo": "text", "formato": "zona",
-             "placeholder": "home.arpa", "ayuda": "Vacío: se usa la zona más cercana al dominio."},
+        "name": "Technitium DNS Server", "group": GROUP_API, "records": ALL_RECORDS,
+        "instructions": "Create a token in Administration → Sessions → Create Token. The link's domain "
+                        "must be inside a primary zone of the server (for example home.arpa).",
+        "fields": [
+            url_field("192.0.2.10  or  https://dns.home.arpa:53443", port=5380),
+            {"id": "token", "label": "API token", "type": "password", "required": True, "secret": True},
+            {"id": "zone", "label": "Zone (optional)", "type": "text", "format": "zone",
+             "placeholder": "home.arpa", "help": "Empty: the closest zone to the domain is used."},
             TTL_FIELD, TLS_FIELD,
         ],
         "add": technitium_add, "delete": technitium_delete, "test": technitium_test,
     },
     "pdns_auth": {
-        "nombre": "PowerDNS Authoritative", "grupo": GRUPO_API, "registros": TODOS,
-        "instrucciones": "Necesita la API activada en pdns.conf: api=yes, api-key=..., webserver=yes y "
-                         "webserver-allow-from con la IP de linkManager. Los dominios tienen que estar "
-                         "dentro de la zona configurada.",
-        "campos": [
-            url_field("192.0.2.10  o  http://192.0.2.10:8081", puerto=8081),
-            {"id": "api_key", "etiqueta": "API key", "tipo": "password", "requerido": True, "secreto": True},
-            {"id": "zona", "etiqueta": "Zona", "tipo": "text", "requerido": True, "formato": "zona",
+        "name": "PowerDNS Authoritative", "group": GROUP_API, "records": ALL_RECORDS,
+        "instructions": "Needs the API enabled in pdns.conf: api=yes, api-key=..., webserver=yes and "
+                        "webserver-allow-from with linkManager's IP. The domains must be inside the "
+                        "configured zone.",
+        "fields": [
+            url_field("192.0.2.10  or  http://192.0.2.10:8081", port=8081),
+            {"id": "api_key", "label": "API key", "type": "password", "required": True, "secret": True},
+            {"id": "zone", "label": "Zone", "type": "text", "required": True, "format": "zone",
              "placeholder": "home.arpa"},
-            {"id": "server_id", "etiqueta": "Server id", "tipo": "text", "defecto": "localhost",
-             "requerido": True, "formato": "perfil"},
+            {"id": "server_id", "label": "Server id", "type": "text", "default": "localhost",
+             "required": True, "format": "profile"},
             TTL_FIELD, TLS_FIELD,
         ],
         "add": pdns_add, "delete": pdns_delete, "test": pdns_test,
     },
     "nextdns": {
-        "nombre": "NextDNS", "grupo": GRUPO_NUBE, "registros": TODOS,
-        "instrucciones": "La API key está al pie de my.nextdns.io/account. El ID del perfil es el que "
-                         "aparece en la URL (my.nextdns.io/<id>/setup). Los registros se crean como Rewrites.",
-        "campos": [
-            {"id": "api_key", "etiqueta": "API key", "tipo": "password", "requerido": True, "secreto": True},
-            {"id": "perfil", "etiqueta": "ID del perfil", "tipo": "text", "requerido": True,
-             "formato": "perfil", "placeholder": "abc123"},
+        "name": "NextDNS", "group": GROUP_CLOUD, "records": ALL_RECORDS,
+        "instructions": "The API key is at the bottom of my.nextdns.io/account. The profile ID is the one "
+                        "in the URL (my.nextdns.io/<id>/setup). Records are created as Rewrites.",
+        "fields": [
+            {"id": "api_key", "label": "API key", "type": "password", "required": True, "secret": True},
+            {"id": "profile", "label": "Profile ID", "type": "text", "required": True,
+             "format": "profile", "placeholder": "abc123"},
         ],
         "add": nextdns_add, "delete": nextdns_delete, "test": nextdns_test,
     },
     "controld": {
-        "nombre": "Control D", "grupo": GRUPO_NUBE, "registros": TODOS,
-        "instrucciones": "Creá un token de API con permiso de escritura en el panel de Control D. El ID "
-                         "del perfil es el que aparece en su URL. Los registros se crean como reglas "
-                         "personalizadas de tipo redirección (SPOOF).",
-        "campos": [
-            {"id": "token", "etiqueta": "Token de API", "tipo": "password", "requerido": True, "secreto": True},
-            {"id": "perfil", "etiqueta": "ID del perfil", "tipo": "text", "requerido": True,
-             "formato": "perfil", "placeholder": "123456abcdef"},
+        "name": "Control D", "group": GROUP_CLOUD, "records": ALL_RECORDS,
+        "instructions": "Create an API token with write permission in the Control D dashboard. The "
+                        "profile ID is the one in its URL. Records are created as custom redirect "
+                        "(SPOOF) rules.",
+        "fields": [
+            {"id": "token", "label": "API token", "type": "password", "required": True, "secret": True},
+            {"id": "profile", "label": "Profile ID", "type": "text", "required": True,
+             "format": "profile", "placeholder": "123456abcdef"},
         ],
         "add": controld_add, "delete": controld_delete, "test": controld_test,
     },
     "blocky": _ssh_file_provider(
-        "Blocky", "hosts", SOLO_IP, "/etc/blocky/linkmanager.hosts", "systemctl restart blocky",
-        "Agregá el archivo en config.yml: hostsFile → sources: [/etc/blocky/linkmanager.hosts]. "
-        "Solo registros A y AAAA."),
+        "Blocky", "hosts", IP_RECORDS, "/etc/blocky/linkmanager.hosts", "systemctl restart blocky",
+        "Add the file to config.yml: hostsFile → sources: [/etc/blocky/linkmanager.hosts]. "
+        "Only A and AAAA records."),
     "unbound": _ssh_file_provider(
-        "Unbound", "unbound", TODOS, "/etc/unbound/unbound.conf.d/linkmanager.conf",
+        "Unbound", "unbound", ALL_RECORDS, "/etc/unbound/unbound.conf.d/linkmanager.conf",
         "unbound-checkconf && systemctl reload unbound",
-        "El archivo se incluye solo si tu unbound.conf incluye la carpeta unbound.conf.d (en Debian y "
-        "Ubuntu ya viene así). Si no, agregá: include: \"/etc/unbound/unbound.conf.d/*.conf\"."),
+        "The file is included automatically if your unbound.conf includes the unbound.conf.d folder "
+        "(Debian and Ubuntu do it by default). Otherwise add: include: \"/etc/unbound/unbound.conf.d/*.conf\"."),
     "dnsmasq": _ssh_file_provider(
-        "dnsmasq", "dnsmasq", TODOS, "/etc/dnsmasq.d/linkmanager.conf",
+        "dnsmasq", "dnsmasq", ALL_RECORDS, "/etc/dnsmasq.d/linkmanager.conf",
         "dnsmasq --test && systemctl restart dnsmasq",
-        "dnsmasq lee /etc/dnsmasq.d/ si tiene conf-dir=/etc/dnsmasq.d (en Debian y Ubuntu ya viene así). "
-        "Para un CNAME, el destino tiene que ser un nombre que dnsmasq resuelva localmente "
-        "(otro registro, /etc/hosts o DHCP)."),
+        "dnsmasq reads /etc/dnsmasq.d/ when it has conf-dir=/etc/dnsmasq.d (Debian and Ubuntu do it by "
+        "default). For a CNAME, the target must be a name dnsmasq resolves locally (another record, "
+        "/etc/hosts or DHCP)."),
     "knot": _ssh_file_provider(
-        "Knot Resolver", "hosts", SOLO_IP, "/etc/knot-resolver/linkmanager.hosts",
+        "Knot Resolver", "hosts", IP_RECORDS, "/etc/knot-resolver/linkmanager.hosts",
         "systemctl restart kresd@1",
-        "Knot Resolver 5: en kresd.conf agregá modules = { 'hints' } y "
-        "hints.add_hosts('/etc/knot-resolver/linkmanager.hosts'). Knot Resolver 6: en config.yaml, "
-        "local-data → addresses-files: [/etc/knot-resolver/linkmanager.hosts] y como comando de "
-        "recarga kresctl reload. Solo registros A y AAAA. Ojo: Knot Resolver responde NXDOMAIN "
-        "para dominios de uso especial (.home.arpa, .test, .local...) sin mirar el archivo; "
-        "usá otro dominio, por ejemplo casa.lan."),
+        "Knot Resolver 5: in kresd.conf add modules = { 'hints' } and "
+        "hints.add_hosts('/etc/knot-resolver/linkmanager.hosts'). Knot Resolver 6: in config.yaml, "
+        "local-data → addresses-files: [/etc/knot-resolver/linkmanager.hosts] and kresctl reload as the "
+        "reload command. Only A and AAAA records. Note: Knot Resolver answers NXDOMAIN for special-use "
+        "domains (.home.arpa, .test, .local...) without reading the file; use another domain, for "
+        "example home.lan."),
     "coredns": _ssh_file_provider(
-        "CoreDNS", "hosts", SOLO_IP, "/etc/coredns/linkmanager.hosts", "",
-        "En el Corefile agregá: hosts /etc/coredns/linkmanager.hosts { fallthrough }. CoreDNS relee el "
-        "archivo solo cada pocos segundos, así que no hace falta comando de recarga. Solo registros A y AAAA.",
-        "Opcional: CoreDNS relee el archivo solo."),
+        "CoreDNS", "hosts", IP_RECORDS, "/etc/coredns/linkmanager.hosts", "",
+        "In the Corefile add: hosts /etc/coredns/linkmanager.hosts { fallthrough }. CoreDNS re-reads the "
+        "file by itself every few seconds, so no reload command is needed. Only A and AAAA records.",
+        "Optional: CoreDNS re-reads the file by itself."),
     "bind9": {
-        "nombre": "BIND9", "grupo": GRUPO_SSH, "registros": TODOS,
-        "instrucciones": "Usa nsupdate (actualización dinámica) en el servidor. La zona tiene que aceptar "
-                         "actualizaciones: con update-policy local; alcanza con el usuario root y la clave de "
-                         "sesión de named. Con una clave TSIG, indicá su archivo y usá allow-update o "
-                         "update-policy con esa clave.",
-        "campos": ssh_fields() + [
-            {"id": "clave_tsig", "etiqueta": "Archivo de clave TSIG en el servidor (opcional)", "tipo": "text",
-             "formato": "ruta", "placeholder": "/etc/bind/linkmanager.key",
-             "ayuda": "Vacío: nsupdate -l con la clave de sesión local."},
-            {"id": "servidor_dns", "etiqueta": "Servidor al que enviar la actualización (opcional)",
-             "tipo": "text", "formato": "host", "placeholder": "127.0.0.1",
-             "ayuda": "Solo con clave TSIG (vacío: el primario de la zona). Sin clave, nsupdate -l "
-                      "actualiza siempre este mismo servidor."},
-            {"id": "puerto_dns", "etiqueta": "Puerto DNS de BIND", "tipo": "number", "defecto": 53,
+        "name": "BIND9", "group": GROUP_SSH, "records": ALL_RECORDS,
+        "instructions": "Uses nsupdate (dynamic update) on the server. The zone must accept updates: "
+                        "with update-policy local; the root user and named's session key are enough. "
+                        "With a TSIG key, set its file and use allow-update or update-policy with that key.",
+        "fields": ssh_fields() + [
+            {"id": "tsig_key", "label": "TSIG key file on the server (optional)", "type": "text",
+             "format": "path", "placeholder": "/etc/bind/linkmanager.key",
+             "help": "Empty: nsupdate -l with the local session key."},
+            {"id": "dns_server", "label": "Server to send the update to (optional)",
+             "type": "text", "format": "host", "placeholder": "127.0.0.1",
+             "help": "Only with a TSIG key (empty: the zone's primary). Without a key, nsupdate -l "
+                     "always updates this same server."},
+            {"id": "dns_port", "label": "BIND DNS port", "type": "number", "default": 53,
              "min": 1, "max": 65535},
-            {"id": "zona", "etiqueta": "Zona (recomendada)", "tipo": "text", "formato": "zona",
+            {"id": "zone", "label": "Zone (recommended)", "type": "text", "format": "zone",
              "placeholder": "home.arpa",
-             "ayuda": "Con la zona, Probar conexión verifica que BIND acepta actualizaciones. "
-                      "Vacío: nsupdate la detecta sola en cada registro."},
+             "help": "With the zone, Test connection checks that BIND accepts updates. "
+                     "Empty: nsupdate finds it by itself for every record."},
             TTL_FIELD,
         ],
         "add": bind_add, "delete": bind_delete, "test": bind_test,
     },
     "pdns_recursor": _ssh_file_provider(
-        "PowerDNS Recursor", "hosts", SOLO_IP, "/etc/powerdns/linkmanager.hosts",
+        "PowerDNS Recursor", "hosts", IP_RECORDS, "/etc/powerdns/linkmanager.hosts",
         "systemctl restart pdns-recursor",
-        "En recursor.conf: export-etc-hosts=yes y etc-hosts-file=/etc/powerdns/linkmanager.hosts "
-        "(en la configuración YAML de la 5.x: recursor.export_etc_hosts y recursor.etc_hosts_file). "
-        "Solo registros A y AAAA."),
+        "In recursor.conf: export-etc-hosts=yes and etc-hosts-file=/etc/powerdns/linkmanager.hosts "
+        "(in the YAML configuration of 5.x: recursor.export_etc_hosts and recursor.etc_hosts_file). "
+        "Only A and AAAA records."),
     "dnscrypt": _ssh_file_provider(
-        "dnscrypt-proxy", "cloaking", TODOS, "/etc/dnscrypt-proxy/linkmanager-cloaking.txt",
+        "dnscrypt-proxy", "cloaking", ALL_RECORDS, "/etc/dnscrypt-proxy/linkmanager-cloaking.txt",
         "systemctl restart dnscrypt-proxy",
-        "En dnscrypt-proxy.toml: cloaking_rules = '/etc/dnscrypt-proxy/linkmanager-cloaking.txt'. "
-        "Si el destino es un nombre, dnscrypt-proxy lo resuelve con sus servidores de internet y "
-        "devuelve esas IPs (no un CNAME): usá un nombre público, no otro nombre del cloaking."),
+        "In dnscrypt-proxy.toml: cloaking_rules = '/etc/dnscrypt-proxy/linkmanager-cloaking.txt'. "
+        "When the target is a name, dnscrypt-proxy resolves it with its internet servers and returns "
+        "those IPs (not a CNAME): use a public name, not another cloaking name."),
     "openwrt": {
-        "nombre": "OpenWrt (adblock, adblock-lean, https-dns-proxy)", "grupo": GRUPO_SSH, "registros": TODOS,
-        "instrucciones": "Crea los registros en el dnsmasq del router, como Network → DHCP and DNS → "
-                         "Hostnames y CNAME, con uci. adblock, adblock-lean y https-dns-proxy usan ese mismo "
-                         "dnsmasq, así que sirve con cualquiera de ellos. Copiá la clave pública en "
-                         "System → Administration → SSH-Keys.",
-        "campos": ssh_fields() + [
-            {"id": "recarga", "etiqueta": "Comando para aplicar los cambios", "tipo": "text",
-             "defecto": "/etc/init.d/dnsmasq reload", "formato": "comando"},
+        "name": "OpenWrt (adblock, adblock-lean, https-dns-proxy)", "group": GROUP_SSH,
+        "records": ALL_RECORDS,
+        "instructions": "Creates the records in the router's dnsmasq, like Network → DHCP and DNS → "
+                        "Hostnames and CNAME, with uci. adblock, adblock-lean and https-dns-proxy use that "
+                        "same dnsmasq, so it works with any of them. Copy the public key to "
+                        "System → Administration → SSH-Keys.",
+        "fields": ssh_fields() + [
+            {"id": "reload_command", "label": "Command to apply the changes", "type": "text",
+             "default": "/etc/init.d/dnsmasq reload", "format": "command"},
         ],
         "add": openwrt_add, "delete": openwrt_delete, "test": openwrt_test,
     },
 }
 
 
-# Persistencia de integraciones (contienen contraseñas: archivo 600) ----------
+# Integration persistence (they contain passwords: file mode 600) ------------
 def load_integrations():
     try:
         with open(INTEGRATIONS) as f:
@@ -1371,9 +1468,21 @@ def save_integrations(items):
     os.replace(tmp, INTEGRATIONS)
 
 
+def translated_field(field):
+    out = dict(field)
+    for k in ("label", "help", "placeholder"):
+        if out.get(k):
+            out[k] = tr(out[k])
+    if "options" in out:
+        out["options"] = [[value, tr(text)] for value, text in out["options"]]
+    return out
+
+
 def provider_types():
-    return [{"tipo": k, "nombre": p["nombre"], "grupo": p["grupo"], "registros": p["registros"],
-             "instrucciones": p.get("instrucciones", ""), "campos": p["campos"]}
+    """Integration types for the panel, in the current language."""
+    return [{"type": k, "name": p["name"], "group": tr(p["group"]), "records": p["records"],
+             "instructions": tr(p.get("instructions", "")),
+             "fields": [translated_field(c) for c in p["fields"]]}
             for k, p in PROVIDERS.items()]
 
 
@@ -1383,95 +1492,96 @@ def integration_summary(it):
     if it.get("ssh_host"):
         port = f":{it['ssh_port']}" if it.get("ssh_port") not in (None, 22) else ""
         return f"{it.get('ssh_user', '')}@{it['ssh_host']}{port}"
-    if it.get("perfil"):
-        return f"perfil {it['perfil']}"
+    if it.get("profile"):
+        return tr("profile {profile}", profile=it["profile"])
     return ""
 
 
 def public_integration(it):
-    """Sin secretos: solo indica si están cargados."""
+    """Without secrets: only tells whether they are set."""
     prov = PROVIDERS.get(it["tipo"], {})
     out = dict(it)
-    for campo in prov.get("campos", []):
-        if campo.get("secreto"):
-            out[campo["id"]] = ""
-            out[campo["id"] + "_cargado"] = bool(it.get(campo["id"]))
-    out["tipo_nombre"] = prov.get("nombre", it["tipo"])
-    out["registros"] = prov.get("registros", [])
-    out["resumen"] = integration_summary(it)
+    for field in prov.get("fields", []):
+        if field.get("secret"):
+            out[field["id"]] = ""
+            out[field["id"] + "_set"] = bool(it.get(field["id"]))
+    out["type_name"] = prov.get("name", it["tipo"])
+    out["records"] = prov.get("records", [])
+    out["summary"] = integration_summary(it)
     return out
 
 
-def validate_field(campo, v):
-    """Valida y normaliza un campo de texto según su "formato"."""
-    fmt, etiqueta = campo.get("formato"), campo["etiqueta"]
+def validate_field(field, v):
+    """Validates and normalizes a text field according to its "format"."""
+    fmt, label = field.get("format"), tr(field["label"])
     if not v:
         return v
     if fmt == "url":
-        return normalize_server_url(v, campo.get("puerto"))
+        return normalize_server_url(v, field.get("port"))
     if fmt == "host":
         v = v.lower()
         if not valid_host_or_ip(v):
-            raise BadRequest(f"'{etiqueta}' no es una IP ni un nombre válido")
-    elif fmt == "zona":
+            raise BadRequest(tr("'{label}' is not a valid IP or name", label=label))
+    elif fmt == "zone":
         v = v.lower().rstrip(".")
         if not valid_hostname(v):
-            raise BadRequest(f"'{etiqueta}' no es un nombre de zona válido")
-    elif fmt == "usuario" and not USER_RE.fullmatch(v):
-        raise BadRequest(f"'{etiqueta}' no es un nombre de usuario válido")
-    elif fmt == "ruta" and not PATH_RE.fullmatch(v):
-        raise BadRequest(f"'{etiqueta}' tiene que ser una ruta absoluta sin espacios")
-    elif fmt == "perfil" and not PROFILE_RE.fullmatch(v):
-        raise BadRequest(f"'{etiqueta}' solo admite letras, números, - y _")
-    elif fmt == "comando" and ("\n" in v or "\r" in v):
-        raise BadRequest(f"'{etiqueta}' tiene que ser una sola línea")
+            raise BadRequest(tr("'{label}' is not a valid zone name", label=label))
+    elif fmt == "user" and not USER_RE.fullmatch(v):
+        raise BadRequest(tr("'{label}' is not a valid user name", label=label))
+    elif fmt == "path" and not PATH_RE.fullmatch(v):
+        raise BadRequest(tr("'{label}' must be an absolute path without spaces", label=label))
+    elif fmt == "profile" and not PROFILE_RE.fullmatch(v):
+        raise BadRequest(tr("'{label}' only accepts letters, numbers, - and _", label=label))
+    elif fmt == "command" and ("\n" in v or "\r" in v):
+        raise BadRequest(tr("'{label}' must be a single line", label=label))
     return v
 
 
 def validate_integration(body, current=None, others=()):
-    tipo = current["tipo"] if current else str(body.get("tipo", ""))
-    prov = PROVIDERS.get(tipo)
+    kind = current["tipo"] if current else str(body.get("tipo", ""))
+    prov = PROVIDERS.get(kind)
     if not prov:
-        raise BadRequest("Tipo de integración desconocido")
-    nombre = str(body.get("nombre", current["nombre"] if current else "")).strip()[:100]
-    if not nombre:
-        raise BadRequest("El nombre de la integración es obligatorio")
-    if any(o["nombre"].lower() == nombre.lower() for o in others):
-        raise BadRequest(f"Ya existe una integración llamada '{nombre}'")
-    out = {"id": current["id"] if current else uuid.uuid4().hex[:8], "tipo": tipo, "nombre": nombre}
-    for campo in prov["campos"]:
-        k, t = campo["id"], campo["tipo"]
+        raise BadRequest(tr("Unknown integration type"))
+    name = str(body.get("nombre", current["nombre"] if current else "")).strip()[:100]
+    if not name:
+        raise BadRequest(tr("The integration name is required"))
+    if any(o["nombre"].lower() == name.lower() for o in others):
+        raise BadRequest(tr("An integration named '{name}' already exists", name=name))
+    out = {"id": current["id"] if current else uuid.uuid4().hex[:8], "tipo": kind, "nombre": name}
+    for field in prov["fields"]:
+        k, t, label = field["id"], field["type"], tr(field["label"])
         if t == "checkbox":
-            v = bool(body[k]) if k in body else (current or {}).get(k, campo.get("defecto", False))
+            v = bool(body[k]) if k in body else (current or {}).get(k, field.get("default", False))
         elif t == "number":
-            raw = body.get(k) if k in body else (current or {}).get(k, campo.get("defecto"))
+            raw = body.get(k) if k in body else (current or {}).get(k, field.get("default"))
             if raw in (None, ""):
-                raw = campo.get("defecto")
+                raw = field.get("default")
             try:
                 v = int(raw)
             except (TypeError, ValueError):
-                raise BadRequest(f"'{campo['etiqueta']}' tiene que ser un número")
-            if not campo.get("min", v) <= v <= campo.get("max", v):
-                raise BadRequest(f"'{campo['etiqueta']}' tiene que estar entre {campo['min']} y {campo['max']}")
+                raise BadRequest(tr("'{label}' must be a number", label=label))
+            if not field.get("min", v) <= v <= field.get("max", v):
+                raise BadRequest(tr("'{label}' must be between {min} and {max}",
+                                    label=label, min=field["min"], max=field["max"]))
         else:
-            limite = 20000 if t == "ssh_key" else 500
+            limit = 20000 if t == "ssh_key" else 500
             raw = body.get(k)
             v = (str(raw).replace("\r\n", "\n").strip() if t == "ssh_key" else str(raw).strip()) \
                 if raw is not None else ""
-            v = v[:limite]
-            nuevo_secreto = bool(v) and campo.get("secreto")
-            if not v and campo.get("secreto") and current:
-                v = current.get(k, "")  # vacío al editar = conservar el secreto guardado
+            v = v[:limit]
+            new_secret = bool(v) and field.get("secret")
+            if not v and field.get("secret") and current:
+                v = current.get(k, "")  # empty while editing = keep the stored secret
             elif not v and k not in body:
-                v = (current or {}).get(k, campo.get("defecto", ""))
-            if t == "select" and v not in [o[0] for o in campo["opciones"]]:
-                raise BadRequest(f"Valor inválido para '{campo['etiqueta']}'")
-            if campo.get("requerido") and not v:
-                raise BadRequest(f"El campo '{campo['etiqueta']}' es obligatorio")
+                v = (current or {}).get(k, field.get("default", ""))
+            if t == "select" and v not in [o[0] for o in field["options"]]:
+                raise BadRequest(tr("Invalid value for '{label}'", label=label))
+            if field.get("required") and not v:
+                raise BadRequest(tr("The field '{label}' is required", label=label))
             if t == "ssh_key":
-                out["ssh_publica"] = ssh_public_key(v) if nuevo_secreto else (current or {}).get("ssh_publica", "")
+                out["ssh_public_key"] = ssh_public_key(v) if new_secret else (current or {}).get("ssh_public_key", "")
             else:
-                v = validate_field(campo, v)
+                v = validate_field(field, v)
         out[k] = v
     return out
 
@@ -1480,32 +1590,32 @@ def find_integration(integrations, ident):
     return next((x for x in integrations if x["id"] == ident), None)
 
 
-# Registro DNS del alta de un link --------------------------------------------
+# DNS record of a new link ------------------------------------------------------
 def validate_dns(dns, integrations):
-    """Normaliza {integracion, dominio, destino, usar_en_url} y elige el tipo de registro."""
+    """Normalizes {integracion, dominio, destino, usar_en_url} and picks the record type."""
     if not isinstance(dns, dict):
-        raise BadRequest("Datos de DNS inválidos")
+        raise BadRequest(tr("Invalid DNS data"))
     cfg = find_integration(integrations, str(dns.get("integracion", "")))
     if not cfg:
-        raise BadRequest("Elegí un servidor DNS configurado en Configuración")
-    dominio = str(dns.get("dominio", "")).strip().lower().rstrip(".")
-    destino = str(dns.get("destino", "")).strip().lower().rstrip(".")
-    if not dominio or not destino:
-        raise BadRequest("Para el DNS completá el dominio y la IP o nombre de destino")
-    if not valid_hostname(dominio):
-        raise BadRequest(f"Dominio inválido: {dominio}")
+        raise BadRequest(tr("Choose a DNS server configured in Settings"))
+    domain = str(dns.get("dominio", "")).strip().lower().rstrip(".")
+    target = str(dns.get("destino", "")).strip().lower().rstrip(".")
+    if not domain or not target:
+        raise BadRequest(tr("For the DNS record, fill in the domain and the target IP or name"))
+    if not valid_hostname(domain):
+        raise BadRequest(tr("Invalid domain: {domain}", domain=domain))
     try:
-        ip = ipaddress.ip_address(destino)
-        tipo, destino = ("A" if ip.version == 4 else "AAAA"), str(ip)
+        ip = ipaddress.ip_address(target)
+        kind, target = ("A" if ip.version == 4 else "AAAA"), str(ip)
     except ValueError:
-        if not valid_hostname(destino):
-            raise BadRequest(f"Destino inválido (no es IP ni nombre): {destino}")
-        if destino == dominio:
-            raise BadRequest("El CNAME no puede apuntar a sí mismo")
-        tipo = "CNAME"
-    if tipo not in PROVIDERS[cfg["tipo"]]["registros"]:
-        raise BadRequest(f"{cfg['nombre']} no admite registros {tipo}")
-    return cfg, {"tipo": tipo, "dominio": dominio, "destino": destino,
+        if not valid_hostname(target):
+            raise BadRequest(tr("Invalid target (neither an IP nor a name): {target}", target=target))
+        if target == domain:
+            raise BadRequest(tr("The CNAME cannot point to itself"))
+        kind = "CNAME"
+    if kind not in PROVIDERS[cfg["tipo"]]["records"]:
+        raise BadRequest(tr("{name} does not support {type} records", name=cfg["nombre"], type=kind))
+    return cfg, {"tipo": kind, "dominio": domain, "destino": target,
                  "usar_en_url": bool(dns.get("usar_en_url"))}
 
 
@@ -1514,28 +1624,31 @@ def integration_for_link(dns, integrations):
     if ident:
         cfg = find_integration(integrations, ident)
         if not cfg:
-            raise BadRequest(f"La integración '{dns.get('servidor', ident)}' ya no existe")
+            raise BadRequest(tr("Integration '{name}' no longer exists", name=dns.get("servidor", ident)))
         return cfg
-    # Links creados antes de las integraciones no guardan en qué servidor están:
-    # si hay una sola integración, es esa.
+    # Links created before integrations existed do not store their server:
+    # if there is only one integration, it is that one.
     if len(integrations) == 1:
         return integrations[0]
-    raise BadRequest("No se sabe en qué servidor DNS está el registro de este link")
+    raise BadRequest(tr("It is unknown which DNS server holds this link's record"))
 
 
 def url_with_host(url, host):
-    """Reemplaza el host de la URL conservando esquema, puerto, ruta y query."""
+    """Replaces the URL host keeping scheme, port, path and query."""
     u = urllib.parse.urlsplit(url)
     netloc = host + (f":{u.port}" if u.port else "")
     return urllib.parse.urlunsplit(u._replace(netloc=netloc))
 
 
-# --- Validación y HTTP -------------------------------------------------------
+# --- Validation and HTTP ---------------------------------------------------------
 def validate_section(body):
-    titulo = str(body.get("titulo", "")).strip()[:200]
-    if not titulo:
-        raise BadRequest("El título de la sección es obligatorio")
-    return titulo
+    title = str(body.get("titulo", "")).strip()[:200]
+    if not title:
+        raise BadRequest(tr("The section title is required"))
+    return title
+
+
+LINK_FIELD_LABELS = {"nombre": "Name", "descripcion": "Description", "url": "URL"}
 
 
 def validate(body, current=None):
@@ -1543,10 +1656,10 @@ def validate(body, current=None):
     for k in ("nombre", "descripcion", "url"):
         v = str(body.get(k, out.get(k, ""))).strip()
         if k != "descripcion" and not v:
-            raise BadRequest(f"El campo '{k}' es obligatorio")
+            raise BadRequest(tr("The field '{label}' is required", label=tr(LINK_FIELD_LABELS[k])))
         out[k] = v[:300]
     if urllib.parse.urlparse(out["url"]).scheme not in ("http", "https"):
-        raise BadRequest("La URL debe empezar con http:// o https://")
+        raise BadRequest(tr("The URL must start with http:// or https://"))
     if not current or any(body.get(k) for k in ("icono", "icono_data", "icono_url")):
         out["icono"] = store_icon(body, out["nombre"])
     return out
@@ -1565,15 +1678,21 @@ class Handler(BaseHTTPRequestHandler):
     def body(self):
         n = int(self.headers.get("Content-Length") or 0)
         if n > 4 * MAX_ICON_BYTES:
-            raise BadRequest("Petición demasiado grande")
+            raise BadRequest(tr("Request too large"))
         try:
             return json.loads(self.rfile.read(n) or b"{}")
         except ValueError:
-            raise BadRequest("JSON inválido")
+            raise BadRequest(tr("Invalid JSON"))
 
     def route(self, method):
         url = urllib.parse.urlparse(self.path)
-        parts = [p for p in url.path.split("/") if p][1:]  # sin "api"
+        parts = [p for p in url.path.split("/") if p][1:]  # without "api"
+        if parts == ["settings"]:
+            if method == "GET":
+                return 200, {**load_settings(), "languages": LANGUAGES}
+            if method == "PUT":
+                with lock:
+                    return 200, {**save_settings(self.body()), "languages": LANGUAGES}
         if method == "GET" and parts == ["buscar-icono"]:
             q = urllib.parse.parse_qs(url.query).get("q", [""])[0]
             return 200, search_icons(q[:100])
@@ -1604,7 +1723,7 @@ class Handler(BaseHTTPRequestHandler):
                         try:
                             PROVIDERS[cfg["tipo"]]["add"](cfg, dns)
                         except BadRequest:
-                            # No dejar huérfano el icono recién descargado o subido.
+                            # Do not leave the just downloaded or uploaded icon orphaned.
                             if body.get("icono_url") or body.get("icono_data"):
                                 try:
                                     os.remove(os.path.join(IMAGES, item["icono"]))
@@ -1621,7 +1740,7 @@ class Handler(BaseHTTPRequestHandler):
             if len(parts) >= 2 and parts[0] == "links":
                 item = find(parts[1])
                 if not item:
-                    return 404, {"error": "Link no encontrado"}
+                    return 404, {"error": tr("Link not found")}
                 if method == "PUT" and len(parts) == 2:
                     body = self.body()
                     if is_section(item):
@@ -1633,20 +1752,20 @@ class Handler(BaseHTTPRequestHandler):
                     save(links)
                     return 200, item
                 if method == "DELETE" and len(parts) == 2:
-                    # Con ?forzar=1 se borra solo el link y el registro DNS queda en el servidor.
-                    forzar = urllib.parse.parse_qs(url.query).get("forzar") == ["1"]
-                    dns_estado = None
-                    if item.get("dns") and not forzar:
+                    # With ?forzar=1 only the link is deleted and the DNS record stays on the server.
+                    force = urllib.parse.parse_qs(url.query).get("forzar") == ["1"]
+                    dns_state = None
+                    if item.get("dns") and not force:
                         try:
                             cfg = integration_for_link(item["dns"], load_integrations())
-                            existia = PROVIDERS[cfg["tipo"]]["delete"](cfg, item["dns"])
+                            existed = PROVIDERS[cfg["tipo"]]["delete"](cfg, item["dns"])
                         except BadRequest as ex:
-                            return 409, {"error": f"No se pudo borrar el registro DNS: {ex}",
+                            return 409, {"error": tr("Could not delete the DNS record: {error}", error=ex),
                                          "dns_fallo": True}
-                        dns_estado = "borrado" if existia else "no_existia"
+                        dns_state = "borrado" if existed else "no_existia"
                     links.remove(item)
                     save(links)
-                    return 200, {"ok": True, "dns": dns_estado}
+                    return 200, {"ok": True, "dns": dns_state}
                 if method == "POST" and parts[2:] == ["mover"]:
                     d = 1 if self.body().get("dir", 1) > 0 else -1
                     i = links.index(item)
@@ -1655,7 +1774,7 @@ class Handler(BaseHTTPRequestHandler):
                         links[i], links[j] = links[j], links[i]
                         save(links)
                     return 200, links
-        return 404, {"error": "Ruta no encontrada"}
+        return 404, {"error": tr("Route not found")}
 
     def route_integrations(self, method, parts):
         if method == "GET" and parts == ["tipos"]:
@@ -1663,12 +1782,12 @@ class Handler(BaseHTTPRequestHandler):
         if method == "POST" and parts == ["generar-clave"]:
             return 200, generate_ssh_key()
         if method == "POST" and parts == ["probar"]:
-            # Probar lo que está en el formulario, sin guardarlo. Al editar,
-            # una contraseña vacía usa la guardada.
+            # Test what is in the form without saving it. While editing,
+            # an empty password uses the stored one.
             body = self.body()
             with lock:
                 current = find_integration(load_integrations(), str(body.get("id", "")))
-                cfg = validate_integration({**body, "nombre": body.get("nombre") or "Servidor DNS"}, current)
+                cfg = validate_integration({**body, "nombre": body.get("nombre") or tr("DNS server")}, current)
             return 200, {"ok": True, "mensaje": PROVIDERS[cfg["tipo"]]["test"](cfg)}
         with lock:
             items = load_integrations()
@@ -1681,18 +1800,18 @@ class Handler(BaseHTTPRequestHandler):
                 return 201, public_integration(it)
             it = find_integration(items, parts[0]) if parts else None
             if not it:
-                return 404, {"error": "Integración no encontrada"}
+                return 404, {"error": tr("Integration not found")}
             if method == "PUT" and len(parts) == 1:
-                nuevo = validate_integration(self.body(), it, [x for x in items if x is not it])
-                items[items.index(it)] = nuevo
+                updated = validate_integration(self.body(), it, [x for x in items if x is not it])
+                items[items.index(it)] = updated
                 save_integrations(items)
-                return 200, public_integration(nuevo)
+                return 200, public_integration(updated)
             if method == "DELETE" and len(parts) == 1:
                 items.remove(it)
                 save_integrations(items)
                 return 200, {"ok": True}
             if not (method == "POST" and parts[1:] == ["probar"]):
-                return 404, {"error": "Ruta no encontrada"}
+                return 404, {"error": tr("Route not found")}
             cfg = dict(it)
         return 200, {"ok": True, "mensaje": PROVIDERS[cfg["tipo"]]["test"](cfg)}
 
@@ -1703,7 +1822,7 @@ class Handler(BaseHTTPRequestHandler):
             code, obj = 400, {"error": str(ex)}
         except Exception as ex:  # noqa: BLE001
             self.log_error("error: %r", ex)
-            code, obj = 500, {"error": "Error interno, revisá el log del servicio"}
+            code, obj = 500, {"error": tr("Internal error, check the service log")}
         self.send_json(code, obj)
 
     def do_GET(self): self.handle_method("GET")
@@ -1713,7 +1832,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def init():
-    """Crea links.json vacío y la carpeta de iconos si faltan."""
+    """Creates an empty links.json and the icons folder when missing."""
     os.makedirs(os.path.dirname(DATA), exist_ok=True)
     os.makedirs(IMAGES, exist_ok=True)
     if not os.path.exists(DATA):
@@ -1722,8 +1841,8 @@ def init():
 
 
 def import_legacy_pihole():
-    """La versión anterior configuraba Pi-hole con variables LM_PIHOLE_*. Si están
-    y todavía no hay integraciones, se importan una sola vez como integración."""
+    """Older versions configured Pi-hole with LM_PIHOLE_* variables. If they are set
+    and there are no integrations yet, they are imported once as an integration."""
     env = os.environ
     if os.path.exists(INTEGRATIONS) or not (env.get("LM_PIHOLE_URL") and env.get("LM_PIHOLE_PASSWORD")):
         return
@@ -1734,9 +1853,284 @@ def import_legacy_pihole():
             "version": env.get("LM_PIHOLE_VERSION", "auto").strip() or "auto",
             "verify_tls": env.get("LM_PIHOLE_VERIFY_TLS", "1") != "0"})
         save_integrations([it])
-        print("Integración Pi-hole importada de LM_PIHOLE_*; ya podés quitar esas variables", flush=True)
+        print("Pi-hole integration imported from LM_PIHOLE_*; you can remove those variables now", flush=True)
     except (BadRequest, OSError) as ex:
-        print(f"No se pudo importar la configuración LM_PIHOLE_*: {ex}", flush=True)
+        print(f"Could not import the LM_PIHOLE_* configuration: {ex}", flush=True)
+
+
+# --- Spanish translations -----------------------------------------------------------
+ES = {
+    # Settings and links
+    "Unknown language": "Idioma desconocido",
+    "The selected section does not exist": "La sección elegida no existe",
+    "The icon is larger than 2 MB": "El icono supera 2 MB",
+    "Icon source not allowed": "Origen de icono no permitido",
+    "The downloaded file is too large": "El archivo descargado es demasiado grande",
+    "Could not download the icon: {error}": "No se pudo descargar el icono: {error}",
+    "The downloaded file is not a valid image ({type})": "El archivo descargado no es una imagen válida ({type})",
+    "Icon format not allowed ({formats})": "Formato de icono no permitido ({formats})",
+    "Invalid uploaded icon": "Icono subido inválido",
+    "Choose an icon: existing, uploaded or from the internet": "Elegí un icono: existente, subido o de internet",
+    "Could not search the internet: {errors}": "No se pudo buscar en internet: {errors}",
+    "The current authentication was not received": "No se recibió la autenticación actual",
+    "The current password is not correct": "La contraseña actual no es correcta",
+    "The new password must be at least 8 characters long": "La nueva contraseña debe tener al menos 8 caracteres",
+    "The new passwords do not match": "Las contraseñas nuevas no coinciden",
+    "The new password is the same as the current one": "La nueva contraseña es igual a la actual",
+    "Invalid DNS data": "Datos de DNS inválidos",
+    "Choose a DNS server configured in Settings": "Elegí un servidor DNS configurado en Configuración",
+    "For the DNS record, fill in the domain and the target IP or name":
+        "Para el DNS completá el dominio y la IP o nombre de destino",
+    "Invalid domain: {domain}": "Dominio inválido: {domain}",
+    "Invalid target (neither an IP nor a name): {target}": "Destino inválido (no es IP ni nombre): {target}",
+    "The CNAME cannot point to itself": "El CNAME no puede apuntar a sí mismo",
+    "{name} does not support {type} records": "{name} no admite registros {type}",
+    "Integration '{name}' no longer exists": "La integración '{name}' ya no existe",
+    "It is unknown which DNS server holds this link's record":
+        "No se sabe en qué servidor DNS está el registro de este link",
+    "The section title is required": "El título de la sección es obligatorio",
+    "Name": "Nombre",
+    "Description": "Descripción",
+    "URL": "URL",
+    "The URL must start with http:// or https://": "La URL debe empezar con http:// o https://",
+    "Request too large": "Petición demasiado grande",
+    "Invalid JSON": "JSON inválido",
+    "Link not found": "Link no encontrado",
+    "Could not delete the DNS record: {error}": "No se pudo borrar el registro DNS: {error}",
+    "Route not found": "Ruta no encontrada",
+    "DNS server": "Servidor DNS",
+    "Integration not found": "Integración no encontrada",
+    "Internal error, check the service log": "Error interno, revisá el log del servicio",
+    # Integrations: validation
+    "Unknown integration type": "Tipo de integración desconocido",
+    "The integration name is required": "El nombre de la integración es obligatorio",
+    "An integration named '{name}' already exists": "Ya existe una integración llamada '{name}'",
+    "'{label}' must be a number": "'{label}' tiene que ser un número",
+    "'{label}' must be between {min} and {max}": "'{label}' tiene que estar entre {min} y {max}",
+    "Invalid value for '{label}'": "Valor inválido para '{label}'",
+    "The field '{label}' is required": "El campo '{label}' es obligatorio",
+    "'{label}' is not a valid IP or name": "'{label}' no es una IP ni un nombre válido",
+    "'{label}' is not a valid zone name": "'{label}' no es un nombre de zona válido",
+    "'{label}' is not a valid user name": "'{label}' no es un nombre de usuario válido",
+    "'{label}' must be an absolute path without spaces": "'{label}' tiene que ser una ruta absoluta sin espacios",
+    "'{label}' only accepts letters, numbers, - and _": "'{label}' solo admite letras, números, - y _",
+    "'{label}' must be a single line": "'{label}' tiene que ser una sola línea",
+    "Invalid server address (use an IP, a name or an http/https URL)":
+        "Dirección del servidor inválida (usá una IP, un nombre o una URL http/https)",
+    "profile {profile}": "perfil {profile}",
+    # Integrations: connection and server errors
+    "{name}: could not connect ({reason})": "{name}: no se pudo conectar ({reason})",
+    "HTTP error {status}": "error HTTP {status}",
+    "{name}: a record for {domain} already exists": "{name}: ya existe un registro para {domain}",
+    "unknown error": "error desconocido",
+    "{name}: wrong API key or password": "{name}: API key o contraseña incorrecta",
+    "{name}: unexpected response (HTTP {status}). Is it a Pi-hole?":
+        "{name}: respuesta inesperada (HTTP {status}). ¿Es un Pi-hole?",
+    "{name}: wrong password or API not available (HTTP {status})":
+        "{name}: contraseña incorrecta o API no disponible (HTTP {status})",
+    "{name}: wrong user or password": "{name}: usuario o contraseña incorrectos",
+    "unexpected response. Is it a Technitium DNS Server?": "respuesta inesperada. ¿Es un Technitium DNS Server?",
+    "{name}: invalid or expired token": "{name}: token inválido o vencido",
+    "{name}: zone {zone} does not exist on the server": "{name}: la zona {zone} no existe en el servidor",
+    "{name}: wrong API key": "{name}: API key incorrecta",
+    "{name}: zone {zone} does not exist (or the server id is wrong)":
+        "{name}: la zona {zone} no existe (o el server id es incorrecto)",
+    "{name}: {domain} does not belong to zone {zone}": "{name}: {domain} no pertenece a la zona {zone}",
+    "{name}: profile {profile} does not exist": "{name}: el perfil {profile} no existe",
+    "{name}: wrong API token or no write permission": "{name}: token de API incorrecto o sin permiso de escritura",
+    "{name}: profile {profile} does not exist in the account": "{name}: el perfil {profile} no existe en la cuenta",
+    "{name}: the SSH private key is missing": "{name}: falta la clave privada SSH",
+    "{name}: the server did not answer over SSH in time": "{name}: el servidor no respondió a tiempo por SSH",
+    "The ssh client is missing where linkManager runs (package openssh-client)":
+        "Falta el cliente ssh donde corre linkManager (paquete openssh-client)",
+    "connection error": "error de conexión",
+    "the key is not authorized (copy the public key to the server's authorized_keys)":
+        "la clave no está autorizada (copiá la clave pública en authorized_keys del servidor)",
+    "the server's host key changed; if that is expected, delete its line from {file}":
+        "cambió la clave de host del servidor; si es esperado, borrá su línea de {file}",
+    "{name}: could not connect over SSH: {detail}": "{name}: no se pudo conectar por SSH: {detail}",
+    "error {code} on the server": "error {code} en el servidor",
+    "ssh-keygen is missing where linkManager runs (package openssh-client)":
+        "Falta ssh-keygen donde corre linkManager (paquete openssh-client)",
+    "Could not generate the key: {error}": "No se pudo generar la clave: {error}",
+    "The SSH private key is not valid or has a passphrase (use one without passphrase)":
+        "La clave privada SSH no es válida o tiene contraseña (usá una sin contraseña)",
+    "folder {arg} does not exist": "no existe la carpeta {arg}",
+    "the SSH user cannot write to {arg}": "el usuario SSH no puede escribir en {arg}",
+    "command {arg} was not found": "no se encontró el comando {arg}",
+    "the reload command ({arg}) failed and the previous file was restored":
+        "falló el comando de recarga ({arg}) y se restauró el archivo anterior",
+    "the reload command ({arg}) failed": "falló el comando de recarga ({arg})",
+    "nsupdate is not installed (package bind9-dnsutils or bind-utils)":
+        "nsupdate no está instalado (paquete bind9-dnsutils o bind-utils)",
+    "cannot read key file {arg}": "no se puede leer la clave {arg}",
+    "named's session key was not found (is BIND running? can the SSH user read it?)":
+        "no se encontró la clave de sesión de named (¿está corriendo BIND? ¿el usuario SSH puede leerla?)",
+    "it is not an OpenWrt (the uci command is missing)": "no es un OpenWrt (no está el comando uci)",
+    "{name}: a record for {domain} already exists in {file}": "{name}: ya existe un registro para {domain} en {file}",
+    "{name}: BIND refused the update; the zone must have update-policy local; (or allow-update with the TSIG key)":
+        "{name}: BIND rechazó la actualización; la zona tiene que tener update-policy local; "
+        "(o allow-update con la clave TSIG)",
+    "{name}: {domain} is not in a zone of this BIND": "{name}: {domain} no está en una zona de este BIND",
+    "key {file}": "clave {file}",
+    "the local session key (nsupdate -l)": "clave de sesión local (nsupdate -l)",
+    "{name}: BIND refused the update; zone {zone} must have update-policy local; (or allow-update with the TSIG key)":
+        "{name}: BIND rechazó la actualización; la zona {zone} tiene que tener update-policy local; "
+        "(o allow-update con la clave TSIG)",
+    # Integrations: test results
+    "Connected to Pi-hole v{version}: {hosts} local DNS records and {cnames} CNAME":
+        "Conectado a Pi-hole v{version}: {hosts} registros DNS locales y {cnames} CNAME",
+    "Connected to AdGuard Home {version}: {count} DNS rewrites":
+        "Conectado a AdGuard Home {version}: {count} reescrituras DNS",
+    "Connected to Technitium DNS Server: {count} zones": "Conectado a Technitium DNS Server: {count} zonas",
+    "Connected to PowerDNS Authoritative: zone {zone} with {count} record sets":
+        "Conectado a PowerDNS Authoritative: zona {zone} con {count} conjuntos de registros",
+    'Connected to NextDNS: profile "{profile}" with {count} rewrites':
+        'Conectado a NextDNS: perfil "{profile}" con {count} rewrites',
+    'Connected to Control D: profile "{profile}" with {count} rules':
+        'Conectado a Control D: perfil "{profile}" con {count} reglas',
+    "Connected over SSH to {host}: {count} linkManager records in {file}":
+        "Conectado por SSH a {host}: {count} registros de linkManager en {file}",
+    "Connected over SSH to {host}: nsupdate available with {mode}. Set the zone so the test also checks "
+    "that BIND accepts updates.":
+        "Conectado por SSH a {host}: nsupdate disponible con {mode}. Indicá la zona para que la prueba "
+        "también verifique que BIND acepta actualizaciones.",
+    "Connected to BIND over SSH ({host}): zone {zone} accepts updates with {mode}":
+        "Conectado a BIND por SSH ({host}): la zona {zone} acepta actualizaciones con {mode}",
+    "Connected over SSH to OpenWrt ({host}): {domains} local names and {cnames} CNAME":
+        "Conectado por SSH a OpenWrt ({host}): {domains} nombres locales y {cnames} CNAME",
+    # Integration types: groups, fields and instructions
+    "Server API": "API del servidor",
+    "Cloud services": "Servicios en la nube",
+    "Over SSH": "Por SSH",
+    "Server IP or URL": "IP o URL del servidor",
+    "If you enter only the IP, http:// is used (port 5380)": "Si ponés solo la IP se usa http:// y el puerto 5380",
+    "If you enter only the IP, http:// is used (port 8081)": "Si ponés solo la IP se usa http:// y el puerto 8081",
+    "Without /admin. If you enter only the IP, http:// is used": "Sin /admin. Si ponés solo la IP se usa http://",
+    "The web panel address. If you enter only the IP, http:// is used":
+        "La dirección del panel web. Si ponés solo la IP se usa http://",
+    "192.0.2.10  or  https://pi.hole": "192.0.2.10  o  https://pi.hole",
+    "192.0.2.10  or  https://adguard.home": "192.0.2.10  o  https://adguard.home",
+    "192.0.2.10  or  https://dns.home.arpa:53443": "192.0.2.10  o  https://dns.home.arpa:53443",
+    "192.0.2.10  or  http://192.0.2.10:8081": "192.0.2.10  o  http://192.0.2.10:8081",
+    "Verify the HTTPS certificate": "Verificar el certificado HTTPS",
+    "Uncheck it if the server uses a self-signed certificate.": "Desmarcalo si usa un certificado autofirmado.",
+    "Record TTL (seconds)": "TTL de los registros (segundos)",
+    "Server IP or name": "IP o nombre del servidor",
+    "SSH port": "Puerto SSH",
+    "SSH user": "Usuario SSH",
+    "It must be able to write the file and run the reload command (root is the simplest).":
+        "Tiene que poder escribir el archivo y ejecutar el comando de recarga (lo más simple es root).",
+    "SSH private key": "Clave privada SSH",
+    "Generate a key pair here and copy the public key to the server's ~/.ssh/authorized_keys, or paste a "
+    "private key without passphrase.":
+        "Generá un par de claves acá y copiá la clave pública en ~/.ssh/authorized_keys del servidor, o "
+        "pegá una clave privada sin contraseña.",
+    "Records file on the server": "Archivo de registros en el servidor",
+    "linkManager only writes its records to this file; it does not touch the rest of the configuration.":
+        "linkManager escribe sus registros solo en este archivo; no toca el resto de la configuración.",
+    "Command to apply the changes": "Comando para aplicar los cambios",
+    "Runs on the server after every change. If it fails, the previous file is restored. Empty: nothing is run.":
+        "Se ejecuta en el servidor después de cada cambio. Si falla, se restaura el archivo anterior. "
+        "Vacío: no ejecuta nada.",
+    "Optional: CoreDNS re-reads the file by itself.": "Opcional: CoreDNS relee el archivo solo.",
+    "Version": "Versión",
+    "Detect automatically": "Detectar automáticamente",
+    "Password or API key": "Contraseña o API key",
+    "v6: web password or app password. v5: API token (Settings → API → Show API token) or the web password.":
+        "v6: contraseña web o app password. v5: token de la API (Settings → API → Show API token) o la "
+        "contraseña web.",
+    "Works with Pi-hole v5 and v6.": "Funciona con Pi-hole v5 y v6.",
+    "Records are created as DNS rewrites (Filters → DNS rewrites).":
+        "Los registros se crean como reescrituras DNS (Filters → DNS rewrites).",
+    "User": "Usuario",
+    "Password": "Contraseña",
+    "Create a token in Administration → Sessions → Create Token. The link's domain must be inside a primary "
+    "zone of the server (for example home.arpa).":
+        "Creá un token en Administration → Sessions → Create Token. El dominio del link tiene que estar "
+        "dentro de una zona primaria del servidor (por ejemplo home.arpa).",
+    "API token": "Token de la API",
+    "Zone (optional)": "Zona (opcional)",
+    "Empty: the closest zone to the domain is used.": "Vacío: se usa la zona más cercana al dominio.",
+    "Needs the API enabled in pdns.conf: api=yes, api-key=..., webserver=yes and webserver-allow-from with "
+    "linkManager's IP. The domains must be inside the configured zone.":
+        "Necesita la API activada en pdns.conf: api=yes, api-key=..., webserver=yes y webserver-allow-from "
+        "con la IP de linkManager. Los dominios tienen que estar dentro de la zona configurada.",
+    "API key": "API key",
+    "Zone": "Zona",
+    "Server id": "Server id",
+    "The API key is at the bottom of my.nextdns.io/account. The profile ID is the one in the URL "
+    "(my.nextdns.io/<id>/setup). Records are created as Rewrites.":
+        "La API key está al pie de my.nextdns.io/account. El ID del perfil es el que aparece en la URL "
+        "(my.nextdns.io/<id>/setup). Los registros se crean como Rewrites.",
+    "Profile ID": "ID del perfil",
+    "Create an API token with write permission in the Control D dashboard. The profile ID is the one in its "
+    "URL. Records are created as custom redirect (SPOOF) rules.":
+        "Creá un token de API con permiso de escritura en el panel de Control D. El ID del perfil es el que "
+        "aparece en su URL. Los registros se crean como reglas personalizadas de tipo redirección (SPOOF).",
+    "Add the file to config.yml: hostsFile → sources: [/etc/blocky/linkmanager.hosts]. Only A and AAAA records.":
+        "Agregá el archivo en config.yml: hostsFile → sources: [/etc/blocky/linkmanager.hosts]. Solo "
+        "registros A y AAAA.",
+    "The file is included automatically if your unbound.conf includes the unbound.conf.d folder (Debian and "
+    "Ubuntu do it by default). Otherwise add: include: \"/etc/unbound/unbound.conf.d/*.conf\".":
+        "El archivo se incluye solo si tu unbound.conf incluye la carpeta unbound.conf.d (en Debian y Ubuntu "
+        "ya viene así). Si no, agregá: include: \"/etc/unbound/unbound.conf.d/*.conf\".",
+    "dnsmasq reads /etc/dnsmasq.d/ when it has conf-dir=/etc/dnsmasq.d (Debian and Ubuntu do it by default). "
+    "For a CNAME, the target must be a name dnsmasq resolves locally (another record, /etc/hosts or DHCP).":
+        "dnsmasq lee /etc/dnsmasq.d/ si tiene conf-dir=/etc/dnsmasq.d (en Debian y Ubuntu ya viene así). "
+        "Para un CNAME, el destino tiene que ser un nombre que dnsmasq resuelva localmente (otro registro, "
+        "/etc/hosts o DHCP).",
+    "Knot Resolver 5: in kresd.conf add modules = { 'hints' } and "
+    "hints.add_hosts('/etc/knot-resolver/linkmanager.hosts'). Knot Resolver 6: in config.yaml, local-data → "
+    "addresses-files: [/etc/knot-resolver/linkmanager.hosts] and kresctl reload as the reload command. Only A "
+    "and AAAA records. Note: Knot Resolver answers NXDOMAIN for special-use domains (.home.arpa, .test, "
+    ".local...) without reading the file; use another domain, for example home.lan.":
+        "Knot Resolver 5: en kresd.conf agregá modules = { 'hints' } y "
+        "hints.add_hosts('/etc/knot-resolver/linkmanager.hosts'). Knot Resolver 6: en config.yaml, "
+        "local-data → addresses-files: [/etc/knot-resolver/linkmanager.hosts] y como comando de recarga "
+        "kresctl reload. Solo registros A y AAAA. Ojo: Knot Resolver responde NXDOMAIN para dominios de uso "
+        "especial (.home.arpa, .test, .local...) sin mirar el archivo; usá otro dominio, por ejemplo casa.lan.",
+    "In the Corefile add: hosts /etc/coredns/linkmanager.hosts { fallthrough }. CoreDNS re-reads the file by "
+    "itself every few seconds, so no reload command is needed. Only A and AAAA records.":
+        "En el Corefile agregá: hosts /etc/coredns/linkmanager.hosts { fallthrough }. CoreDNS relee el "
+        "archivo solo cada pocos segundos, así que no hace falta comando de recarga. Solo registros A y AAAA.",
+    "Uses nsupdate (dynamic update) on the server. The zone must accept updates: with update-policy local; "
+    "the root user and named's session key are enough. With a TSIG key, set its file and use allow-update or "
+    "update-policy with that key.":
+        "Usa nsupdate (actualización dinámica) en el servidor. La zona tiene que aceptar actualizaciones: "
+        "con update-policy local; alcanza con el usuario root y la clave de sesión de named. Con una clave "
+        "TSIG, indicá su archivo y usá allow-update o update-policy con esa clave.",
+    "TSIG key file on the server (optional)": "Archivo de clave TSIG en el servidor (opcional)",
+    "Empty: nsupdate -l with the local session key.": "Vacío: nsupdate -l con la clave de sesión local.",
+    "Server to send the update to (optional)": "Servidor al que enviar la actualización (opcional)",
+    "Only with a TSIG key (empty: the zone's primary). Without a key, nsupdate -l always updates this same "
+    "server.":
+        "Solo con clave TSIG (vacío: el primario de la zona). Sin clave, nsupdate -l actualiza siempre este "
+        "mismo servidor.",
+    "BIND DNS port": "Puerto DNS de BIND",
+    "Zone (recommended)": "Zona (recomendada)",
+    "With the zone, Test connection checks that BIND accepts updates. Empty: nsupdate finds it by itself for "
+    "every record.":
+        "Con la zona, Probar conexión verifica que BIND acepta actualizaciones. Vacío: nsupdate la detecta "
+        "sola en cada registro.",
+    "In recursor.conf: export-etc-hosts=yes and etc-hosts-file=/etc/powerdns/linkmanager.hosts (in the YAML "
+    "configuration of 5.x: recursor.export_etc_hosts and recursor.etc_hosts_file). Only A and AAAA records.":
+        "En recursor.conf: export-etc-hosts=yes y etc-hosts-file=/etc/powerdns/linkmanager.hosts (en la "
+        "configuración YAML de la 5.x: recursor.export_etc_hosts y recursor.etc_hosts_file). Solo registros "
+        "A y AAAA.",
+    "In dnscrypt-proxy.toml: cloaking_rules = '/etc/dnscrypt-proxy/linkmanager-cloaking.txt'. When the target "
+    "is a name, dnscrypt-proxy resolves it with its internet servers and returns those IPs (not a CNAME): use "
+    "a public name, not another cloaking name.":
+        "En dnscrypt-proxy.toml: cloaking_rules = '/etc/dnscrypt-proxy/linkmanager-cloaking.txt'. Si el "
+        "destino es un nombre, dnscrypt-proxy lo resuelve con sus servidores de internet y devuelve esas IPs "
+        "(no un CNAME): usá un nombre público, no otro nombre del cloaking.",
+    "Creates the records in the router's dnsmasq, like Network → DHCP and DNS → Hostnames and CNAME, with "
+    "uci. adblock, adblock-lean and https-dns-proxy use that same dnsmasq, so it works with any of them. Copy "
+    "the public key to System → Administration → SSH-Keys.":
+        "Crea los registros en el dnsmasq del router, como Network → DHCP and DNS → Hostnames y CNAME, con "
+        "uci. adblock, adblock-lean y https-dns-proxy usan ese mismo dnsmasq, así que sirve con cualquiera "
+        "de ellos. Copiá la clave pública en System → Administration → SSH-Keys.",
+}
 
 
 if __name__ == "__main__":

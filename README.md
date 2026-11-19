@@ -1,47 +1,51 @@
 # linkManager
 
-Página de inicio para tu homelab, con un panel web para administrar sus links:
-altas, bajas, modificaciones y orden de las tarjetas, más la búsqueda de iconos
-en internet.
+**English** · [Español](README.es.md)
 
-La página pública es **HTML estático**. Cada vez que cambiás algo desde el panel,
-linkManager regenera `index.html`. Si el servicio está caído, la página se sigue
-viendo igual.
+Start page for your homelab, with a web admin panel to manage its links: add,
+edit, delete and reorder cards, plus online icon search and DNS integrations.
 
-## Funcionalidades
+The public page is **static HTML**. Every time you change something in the panel,
+linkManager regenerates `index.html`. If the service is down, the page still
+looks the same.
 
-- **ABM de links**: nombre, URL, descripción e icono. Las flechas ↑ ↓ cambian el orden.
-- **Secciones**: agregá divisores con título para agrupar los links en varias
-  secciones de la página. Cada link se asigna a una sección desde el formulario, y
-  las secciones se pueden renombrar, mover o borrar (sus links pasan a la anterior).
-- **Iconos**: podés elegir uno ya subido, subir uno propio (png, svg, jpg, webp, gif o
-  ico, de hasta 2 MB) o **buscarlo en internet** mientras escribís el nombre de
-  la aplicación. La búsqueda muestra varias opciones de distintas fuentes:
+## Features
+
+- **Link management**: name, URL, description and icon. The ↑ ↓ arrows change the order.
+- **Sections**: add dividers with a title to group the links in several sections
+  of the page. Each link is assigned to a section from the form, and sections can
+  be renamed, moved or deleted (their links move to the previous one).
+- **Icons**: pick an already uploaded one, upload your own (png, svg, jpg, webp,
+  gif or ico, up to 2 MB) or **search the internet** while you type the
+  application name. The search shows several options from different sources:
   - [dashboard-icons](https://github.com/homarr-labs/dashboard-icons)
   - [selfh.st icons](https://github.com/selfhst/icons)
   - [Simple Icons](https://simpleicons.org/)
   - [Wikimedia Commons](https://commons.wikimedia.org/)
 
-  El icono que elegís se descarga al servidor, así que la página no depende de
-  servicios externos.
-- **Integraciones DNS** (opcional): en la pestaña *Configuración* del panel cargás
-  tus servidores DNS: Pi-hole, AdGuard Home, Technitium, PowerDNS, NextDNS,
-  Control D y, por SSH, Unbound, dnsmasq, Blocky, Knot Resolver, CoreDNS, BIND9,
-  dnscrypt-proxy y OpenWrt. Al dar de alta un link, elegís
-  en cuál crear su nombre: indicás el dominio con el que querés resolverlo y el
-  destino. Si el destino es una IP se crea un registro A/AAAA, y si es un nombre,
-  un CNAME. Con *Usar este dominio en la URL del link*, la tarjeta queda apuntando
-  al nombre nuevo en lugar de a la IP (ver [Integraciones DNS](#integraciones-dns)).
-- **Backups automáticos**: cada cambio guarda una copia con fecha de `links.json`,
-  `index.html` y `htpasswd` (por defecto se conservan las últimas 200).
-- **Cambio de contraseña** del administrador desde el panel.
-- **Salir (logout)**: como la autenticación básica deja la contraseña guardada en el
-  navegador, el botón *Salir* la reemplaza por una credencial ficticia (`logout:logout`,
-  válida solo para `/admin/logout.txt`), y el próximo acceso al panel vuelve a pedirla.
-- **Sin dependencias**: solo la biblioteca estándar de Python 3, nginx, openssl y,
-  para las integraciones DNS por SSH, el cliente `ssh` (openssh-client).
+  The chosen icon is downloaded to the server, so the page does not depend on
+  external services.
+- **DNS integrations** (optional): in the panel's *Settings* tab you add your DNS
+  servers: Pi-hole, AdGuard Home, Technitium, PowerDNS, NextDNS, Control D and,
+  over SSH, Unbound, dnsmasq, Blocky, Knot Resolver, CoreDNS, BIND9,
+  dnscrypt-proxy and OpenWrt. When you add a link, you choose where to create its
+  name: the domain it should resolve as and the target. If the target is an IP an
+  A/AAAA record is created; if it is a name, a CNAME. With *Use this domain in the
+  link URL*, the card points to the new name instead of the IP. Deleting the link
+  deletes its record too (see [DNS integrations](#dns-integrations)).
+- **English and Spanish**: the panel language is chosen in *Settings → Language*
+  and also applies to the server messages. English is the default.
+- **Automatic backups**: every change keeps a timestamped copy of `links.json`,
+  `index.html`, `integraciones.json` and `htpasswd` (the last 200 by default).
+- **Administrator password change** from the panel.
+- **Log out**: since basic authentication leaves the password stored in the
+  browser, the *Log out* button replaces it with a dummy credential
+  (`logout:logout`, only valid for `/admin/logout.txt`), so the next access to the
+  panel asks for it again.
+- **No dependencies**: only the Python 3 standard library, nginx, openssl and,
+  for the SSH DNS integrations, the `ssh` client (openssh-client).
 
-## Instalación (Debian / Ubuntu)
+## Installation (Debian / Ubuntu)
 
 ```bash
 git clone https://github.com/arcsurf/linkManager.git
@@ -49,18 +53,18 @@ cd linkManager
 sudo ./install.sh
 ```
 
-Al terminar, el instalador muestra la URL y la contraseña inicial del usuario
-`admin`. Entrá a `http://<servidor>/admin/` y cambiala desde la sección
-*Cambiar contraseña*.
+When it finishes, the installer shows the URL and the initial password of the
+`admin` user. Open `http://<server>/admin/` and change it in *Settings → Change
+the administrator password*.
 
-Funciona bien en un contenedor LXC de Proxmox (Debian 12 o Ubuntu 24.04, con
-512 MB de RAM alcanza).
+It works well in a Proxmox LXC container (Debian 12/13 or Ubuntu 24.04; 512 MB
+of RAM is enough).
 
-### Migrar una página existente
+### Migrating an existing page
 
-Si ya tenés una página con tarjetas
+If you already have a page with cards like
 `<article class="aplicacion"><a href="..."><img src="./images/..."><h2>...</h2><p>...</p></a></article>`,
-copiala a `/var/www/linkmanager/index.html` y ejecutá:
+copy it to `/var/www/linkmanager/index.html` and run:
 
 ```bash
 sudo runuser -u www-data -- env LM_WEB_ROOT=/var/www/linkmanager \
@@ -68,27 +72,27 @@ sudo runuser -u www-data -- env LM_WEB_ROOT=/var/www/linkmanager \
   python3 tools/migrate.py
 ```
 
-## Cómo funciona
+## How it works
 
 ```
-navegador ──► nginx ──┬── /            archivos estáticos (index.html, images/, css/)
-                      ├── /admin/      panel (auth_basic)
-                      └── /api/        ──► app.py en 127.0.0.1:8091 (auth_basic)
+browser ──► nginx ──┬── /            static files (index.html, images/, css/)
+                    ├── /admin/      panel (auth_basic)
+                    └── /api/        ──► app.py on 127.0.0.1:8091 (auth_basic)
 ```
 
-- `app.py` guarda los links en `links.json` y reescribe en `index.html` solo lo
-  que está entre `<!-- LINKS:START -->` y `<!-- LINKS:END -->`. El resto de la
-  página (título, estilos, pie) se puede editar a mano.
-- La autenticación la hace nginx con `auth_basic`. La API escucha solo en
+- `app.py` stores the links in `links.json` and only rewrites what is between
+  `<!-- LINKS:START -->` and `<!-- LINKS:END -->` in `index.html`. The rest of
+  the page (title, styles, footer) can be edited by hand.
+- Authentication is done by nginx with `auth_basic`. The API only listens on
   localhost.
-- Los iconos se descargan solo desde las CDNs de las fuentes de arriba, que
-  forman una lista de hosts permitidos.
+- Icons are only downloaded from the CDNs of the sources above, which form an
+  allow list of hosts.
 
-## Configuración
+## Configuration
 
-Por variables de entorno, en `deploy/linkmanager.service`:
+Environment variables, in `deploy/linkmanager.service`:
 
-| Variable | Por defecto |
+| Variable | Default |
 |---|---|
 | `LM_WEB_ROOT` | `/var/www/linkmanager` |
 | `LM_DATA` | `/var/lib/linkmanager/links.json` |
@@ -96,146 +100,161 @@ Por variables de entorno, en `deploy/linkmanager.service`:
 | `LM_HTPASSWD` | `/var/lib/linkmanager/htpasswd` |
 | `LM_LISTEN` | `127.0.0.1:8091` |
 | `LM_BACKUPS_TO_KEEP` | `200` |
-| `LM_INTEGRATIONS` | `integraciones.json` en la carpeta de `LM_DATA` |
+| `LM_INTEGRATIONS` | `integraciones.json` in the `LM_DATA` folder |
+| `LM_SETTINGS` | `settings.json` in the `LM_DATA` folder (panel settings, such as the language) |
+| `LM_LANGUAGE` | `en`: language used until one is chosen in the panel (`en` or `es`) |
 
-## Integraciones DNS
+## DNS integrations
 
-Se administran desde el panel, en **Configuración → Integraciones DNS**: alta,
-edición, baja y *Probar conexión*. Cada tipo de servidor pide sus propios datos
-(URL, usuario y contraseña, API key, token, datos SSH...) y el panel muestra sus
-instrucciones de preparación.
+They are managed from the panel, in **Settings → DNS integrations**: add, edit,
+delete and *Test connection*. Each server type asks for its own data (URL, user
+and password, API key, token, SSH data...) and the panel shows its setup
+instructions.
 
-| Servidor | Cómo se conecta | Registros |
+| Server | How it connects | Records |
 |---|---|---|
-| Pi-hole v5 y v6 | API (contraseña o API key) | A, AAAA, CNAME |
-| AdGuard Home | API `/control/rewrite` (usuario y contraseña) | A, AAAA, CNAME |
-| Technitium DNS Server | API (token) en una zona del servidor | A, AAAA, CNAME |
-| PowerDNS Authoritative | API REST (API key) en una zona | A, AAAA, CNAME |
-| NextDNS | API en la nube (API key + perfil), como *Rewrites* | A, AAAA, CNAME |
-| Control D | API en la nube (token + perfil), como reglas *SPOOF* | A, AAAA, CNAME |
-| Unbound | SSH: `local-data` en un archivo de `unbound.conf.d` | A, AAAA, CNAME |
-| dnsmasq | SSH: `host-record`/`cname` en un archivo de `dnsmasq.d` | A, AAAA, CNAME |
-| Blocky | SSH: archivo hosts de `hostsFile.sources` | A, AAAA |
-| Knot Resolver | SSH: archivo hosts del módulo `hints` | A, AAAA |
-| CoreDNS | SSH: archivo del plugin `hosts` | A, AAAA |
-| BIND9 | SSH: `nsupdate` (actualización dinámica, RFC 2136) | A, AAAA, CNAME |
-| PowerDNS Recursor | SSH: archivo de `etc-hosts-file` | A, AAAA |
-| dnscrypt-proxy | SSH: archivo de `cloaking_rules` | A, AAAA, nombre* |
-| OpenWrt (adblock, adblock-lean, https-dns-proxy) | SSH: `uci` en el dnsmasq del router | A, AAAA, CNAME |
+| Pi-hole v5 and v6 | API (password or API key) | A, AAAA, CNAME |
+| AdGuard Home | `/control/rewrite` API (user and password) | A, AAAA, CNAME |
+| Technitium DNS Server | API (token) in a zone of the server | A, AAAA, CNAME |
+| PowerDNS Authoritative | REST API (API key) in a zone | A, AAAA, CNAME |
+| NextDNS | Cloud API (API key + profile), as *Rewrites* | A, AAAA, CNAME |
+| Control D | Cloud API (token + profile), as *SPOOF* rules | A, AAAA, CNAME |
+| Unbound | SSH: `local-data` in a file of `unbound.conf.d` | A, AAAA, CNAME |
+| dnsmasq | SSH: `host-record`/`cname` in a file of `dnsmasq.d` | A, AAAA, CNAME |
+| Blocky | SSH: hosts file of `hostsFile.sources` | A, AAAA |
+| Knot Resolver | SSH: hosts file of the `hints` module | A, AAAA |
+| CoreDNS | SSH: file of the `hosts` plugin | A, AAAA |
+| BIND9 | SSH: `nsupdate` (dynamic update, RFC 2136) | A, AAAA, CNAME |
+| PowerDNS Recursor | SSH: `etc-hosts-file` file | A, AAAA |
+| dnscrypt-proxy | SSH: `cloaking_rules` file | A, AAAA, name* |
+| OpenWrt (adblock, adblock-lean, https-dns-proxy) | SSH: `uci` on the router's dnsmasq | A, AAAA, CNAME |
 
-\* dnscrypt-proxy resuelve el nombre de destino por internet y devuelve sus IPs:
-sirve con nombres públicos, no con otros nombres del *cloaking*.
+\* dnscrypt-proxy resolves the target name over the internet and returns its
+IPs: it works with public names, not with other *cloaking* names.
 
-### Servidores por SSH
+### SSH servers
 
-Unbound, dnsmasq, Blocky, Knot Resolver, CoreDNS, PowerDNS Recursor y
-dnscrypt-proxy no tienen una API para crear registros. linkManager entra por SSH
-y escribe sus registros **solo en un archivo propio** (por ejemplo
-`/etc/dnsmasq.d/linkmanager.conf`), sin tocar el resto de la configuración.
-Después ejecuta el comando de recarga del servicio. Si ese comando falla, restaura
-el archivo anterior y vuelve a recargar, para dejar el servicio como estaba. El
-archivo y el comando se pueden cambiar en cada integración, y cada tipo trae los
-valores habituales de Debian y Ubuntu.
+Unbound, dnsmasq, Blocky, Knot Resolver, CoreDNS, PowerDNS Recursor and
+dnscrypt-proxy have no API to create records. linkManager connects over SSH and
+writes its records **only to a file of its own** (for example
+`/etc/dnsmasq.d/linkmanager.conf`), without touching the rest of the
+configuration. Then it runs the service's reload command. If that command fails,
+it restores the previous file and reloads again, to leave the service as it was.
+The file and the command can be changed in each integration, and each type comes
+with the usual Debian and Ubuntu values.
 
-La clave SSH se genera desde el panel (*Generar par de claves*): copiás la clave
-pública en `~/.ssh/authorized_keys` del servidor (en OpenWrt, *System →
-Administration → SSH-Keys*). También podés pegar una clave privada propia, sin
-contraseña. La primera conexión guarda la clave del servidor en `known_hosts`,
-junto a los datos; si después cambia, la conexión se rechaza.
+The SSH key is generated from the panel (*Generate key pair*): copy the public key
+to the server's `~/.ssh/authorized_keys` (on OpenWrt, *System → Administration →
+SSH-Keys*). You can also paste your own private key, without passphrase. The
+first connection stores the server's host key in `known_hosts`, next to the data;
+if it changes later, the connection is refused.
 
-Algunos detalles verificados:
+Some verified details:
 
-- **Knot Resolver** responde NXDOMAIN para dominios de uso especial (`.home.arpa`,
-  `.test`, `.local`...) sin mirar su archivo de hosts: usá otro dominio, por
-  ejemplo `casa.lan`.
-- **dnsmasq** y **OpenWrt**: el destino de un CNAME tiene que ser un nombre que
-  dnsmasq resuelva localmente (otro registro, `/etc/hosts` o DHCP).
-- **BIND9**: la zona tiene que aceptar actualizaciones dinámicas. Con
-  `update-policy local;` en la zona alcanza con entrar como root: linkManager usa
-  `nsupdate -l` con la clave de sesión de named. También se puede indicar un
-  archivo de clave TSIG.
-- **CoreDNS** relee su archivo solo, así que no necesita comando de recarga.
+- **Knot Resolver** answers NXDOMAIN for special-use domains (`.home.arpa`,
+  `.test`, `.local`...) without reading its hosts file: use another domain, for
+  example `home.lan`.
+- **dnsmasq** and **OpenWrt**: the target of a CNAME must be a name dnsmasq
+  resolves locally (another record, `/etc/hosts` or DHCP).
+- **BIND9**: the zone must accept dynamic updates. With `update-policy local;` in
+  the zone, connecting as root is enough: linkManager uses `nsupdate -l` with
+  named's session key. A TSIG key file can be set too.
+- **CoreDNS** re-reads its file by itself, so it needs no reload command.
 
-Al guardar una integración, el panel prueba la conexión: según el servidor,
-muestra cuántos registros, zonas o reglas tiene, o verifica por SSH que se pueda
-escribir el archivo y que exista el comando de recarga.
+When an integration is saved, the panel tests the connection: depending on the
+server, it shows how many records, zones or rules it has, or checks over SSH that
+the file can be written and that the reload command exists.
 
-Las integraciones se guardan en `integraciones.json`, junto a `links.json` (se
-puede cambiar con `LM_INTEGRATIONS`). El archivo tiene permisos `600` porque
-guarda contraseñas, tokens y claves privadas SSH, y cada cambio deja un backup
-con fecha. La API nunca devuelve esos secretos al navegador: al editar, si dejás
-el campo vacío, se conserva el guardado.
+Integrations are stored in `integraciones.json`, next to `links.json` (it can be
+changed with `LM_INTEGRATIONS`). The file has mode `600` because it holds
+passwords, tokens and SSH private keys, and every change leaves a timestamped
+backup. The API never sends those secrets back to the browser: when editing, an
+empty field keeps the stored value.
 
-En el alta de un link, el bloque **Registro DNS** muestra un desplegable con las
-integraciones. Si escribís una URL con IP, la IP se propone como destino. Si la
-escribís con un nombre, el nombre se propone como dominio.
+When adding a link, the **DNS record** block shows a drop-down list with the
+integrations. If you type a URL with an IP, the IP is proposed as the target. If
+you type it with a name, the name is proposed as the domain.
 
-- Primero se crea el registro en el servidor DNS y después el link. Si el servidor
-  rechaza el registro (por ejemplo, porque el dominio ya existe), el link no se
-  crea y el panel muestra el error.
-- El registro queda guardado en el link (`dns` en `links.json`) y la lista del
-  panel lo muestra.
-- **Al borrar el link se borra también su registro DNS** en el servidor. Si el
-  servidor no responde o la integración ya no existe, el link no se borra y el
-  panel ofrece borrarlo igual, dejando el registro en el servidor. Si el registro
-  ya no estaba en el servidor, el link se borra sin error.
-- Editar el link o borrar la integración **no** modifica el servidor DNS.
-- Si venías de la versión que se configuraba con variables `LM_PIHOLE_*`, al
-  iniciar se importan solas como una integración llamada "Pi-hole" (solo si
-  todavía no hay integraciones). Después podés quitar esas variables.
+- The record is created on the DNS server first and then the link. If the server
+  rejects the record (for example, because the domain already exists), the link
+  is not created and the panel shows the error.
+- The record is stored in the link (`dns` in `links.json`) and the panel list
+  shows it.
+- **Deleting the link also deletes its DNS record** on the server. If the server
+  does not answer or the integration no longer exists, the link is not deleted
+  and the panel offers to delete it anyway, leaving the record on the server. If
+  the record was no longer on the server, the link is deleted without error.
+- Editing the link or deleting the integration does **not** change the DNS server.
+- If you come from the version configured with `LM_PIHOLE_*` variables, they are
+  imported at startup as an integration named "Pi-hole" (only if there are no
+  integrations yet). After that you can remove those variables.
 
-### Agregar otro tipo de servidor DNS
+### Adding another DNS server type
 
-En `app.py`, sumá una entrada a `PROVIDERS` con su nombre, los tipos de registro
-que admite, los campos que pide (el panel arma el formulario con esa lista; un
-campo con `"secreto": true` nunca se devuelve al navegador; los campos SSH comunes
-salen de `ssh_fields()`) y tres funciones:
-`add(cfg, registro)`, `delete(cfg, registro)` (devuelve `False` si el registro ya
-no existía) y `test(cfg)`.
+In `app.py`, add an entry to `PROVIDERS` with its name, group, the record types it
+supports, its setup instructions, the fields it asks for (the panel builds the
+form from that list; a field with `"secret": True` is never sent back to the
+browser; the common SSH fields come from `ssh_fields()`) and three functions:
+`add(cfg, record)`, `delete(cfg, record)` (returns `False` when the record no
+longer existed) and `test(cfg)`. Add the Spanish translation of the new texts to
+`ES` and run `python3 tools/check_translations.py`.
+
+## Translations
+
+Every text is written in English in the code. The Spanish translations live in
+the `ES` dictionary of `app.py` (server messages and integration texts) and in the
+`I18N` dictionary of `admin/index.html` (panel). `tools/check_translations.py`
+checks that nothing is missing and that both languages use the same placeholders.
+
+The JSON field names stored in `links.json` / `integraciones.json` and used by
+the API (`nombre`, `descripcion`, `icono`, `seccion`...) are kept in Spanish for
+compatibility with existing installations.
 
 ## API
 
-Todas las rutas requieren autenticación básica.
+Every route requires basic authentication.
 
-| Método | Ruta | Descripción |
+| Method | Path | Description |
 |---|---|---|
-| GET | `/api/links` | Lista de links |
-| POST | `/api/links` | Alta: `{nombre, url, descripcion, seccion, icono \| icono_url \| icono_data+icono_nombre, dns?}` o sección: `{tipo: "seccion", titulo}`. `dns` opcional: `{integracion, dominio, destino, usar_en_url}` |
-| PUT | `/api/links/<id>` | Modificación (mismos campos, todos opcionales; `seccion` mueve el link) o `{titulo}` para una sección |
-| DELETE | `/api/links/<id>` | Baja. Si el link tiene registro DNS, también lo borra del servidor (responde `dns: "borrado" \| "no_existia"`). Si eso falla responde 409 y no borra el link; con `?forzar=1` borra solo el link |
-| POST | `/api/links/<id>/mover` | Reordenar: `{dir: -1 \| 1}` |
-| GET | `/api/iconos` | Iconos disponibles en `images/` |
-| GET | `/api/buscar-icono?q=<nombre>` | Busca iconos en internet |
-| GET | `/api/integraciones/tipos` | Tipos de servidor DNS disponibles, sus instrucciones y los campos que pide cada uno |
-| POST | `/api/integraciones/generar-clave` | Genera un par de claves SSH ed25519: `{privada, publica}` |
-| GET | `/api/integraciones` | Integraciones configuradas (sin contraseñas) |
-| POST | `/api/integraciones` | Alta: `{tipo, nombre, ...campos del tipo}` |
-| PUT | `/api/integraciones/<id>` | Modificación (un campo secreto vacío conserva el guardado) |
-| DELETE | `/api/integraciones/<id>` | Baja |
-| POST | `/api/integraciones/<id>/probar` | Prueba la conexión de una integración guardada |
-| POST | `/api/integraciones/probar` | Prueba datos sin guardarlos (`{id}` opcional para usar la contraseña guardada) |
+| GET | `/api/links` | List of links |
+| POST | `/api/links` | Add: `{nombre, url, descripcion, seccion, icono \| icono_url \| icono_data+icono_nombre, dns?}` or a section: `{tipo: "seccion", titulo}`. Optional `dns`: `{integracion, dominio, destino, usar_en_url}` |
+| PUT | `/api/links/<id>` | Edit (same fields, all optional; `seccion` moves the link) or `{titulo}` for a section |
+| DELETE | `/api/links/<id>` | Delete. If the link has a DNS record, it is also deleted from the server (answers `dns: "borrado" \| "no_existia"`). If that fails it answers 409 and keeps the link; with `?forzar=1` only the link is deleted |
+| POST | `/api/links/<id>/mover` | Reorder: `{dir: -1 \| 1}` |
+| GET | `/api/iconos` | Icons available in `images/` |
+| GET | `/api/buscar-icono?q=<name>` | Searches icons online |
+| GET | `/api/settings` | Panel settings: `{language, languages}` |
+| PUT | `/api/settings` | `{language: "en" \| "es"}` |
+| GET | `/api/integraciones/tipos` | Available DNS server types, their instructions and the fields each one asks for (in the current language) |
+| POST | `/api/integraciones/generar-clave` | Generates an ed25519 SSH key pair: `{privada, publica}` |
+| GET | `/api/integraciones` | Configured integrations (without secrets) |
+| POST | `/api/integraciones` | Add: `{tipo, nombre, ...fields of the type}` |
+| PUT | `/api/integraciones/<id>` | Edit (an empty secret field keeps the stored one) |
+| DELETE | `/api/integraciones/<id>` | Delete |
+| POST | `/api/integraciones/<id>/probar` | Tests the connection of a saved integration |
+| POST | `/api/integraciones/probar` | Tests data without saving it (optional `{id}` to use the stored password) |
 | POST | `/api/password` | `{actual, nueva, repetir}` |
 
-## Seguridad
+## Security
 
-- El panel usa autenticación básica. **Sin HTTPS, la contraseña viaja en texto plano**:
-  usalo solo en tu red local o poné nginx detrás de TLS (por ejemplo, Let's Encrypt
-  o un proxy inverso).
-- No publiques el servicio de la API directamente. Debe quedar detrás de nginx.
-- Las integraciones DNS guardan credenciales de tus servidores y, en las de SSH,
-  claves privadas que suelen dar acceso de root. Quien controle el panel puede
-  usarlas: protegé el acceso al panel y usá una clave SSH exclusiva para
-  linkManager (la que genera el panel), que podés revocar borrándola de
+- The panel uses basic authentication. **Without HTTPS the password travels in
+  plain text**: use it only on your local network or put nginx behind TLS (for
+  example, Let's Encrypt or a reverse proxy).
+- Do not publish the API service directly. It must stay behind nginx.
+- The DNS integrations store credentials of your servers and, for SSH ones,
+  private keys that usually give root access. Whoever controls the panel can use
+  them: protect access to the panel and use an SSH key dedicated to linkManager
+  (the one the panel generates), which you can revoke by deleting it from
   `authorized_keys`.
 
-## Restaurar un backup
+## Restoring a backup
 
 ```bash
 ls /var/backups/linkmanager/
-sudo cp -a /var/backups/linkmanager/links.json.bkp-<fecha> /var/lib/linkmanager/links.json
-sudo cp -a /var/backups/linkmanager/index.html.bkp-<fecha> /var/www/linkmanager/index.html
+sudo cp -a /var/backups/linkmanager/links.json.bkp-<date> /var/lib/linkmanager/links.json
+sudo cp -a /var/backups/linkmanager/index.html.bkp-<date> /var/www/linkmanager/index.html
 ```
 
-## Licencia
+## License
 
 MIT

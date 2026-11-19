@@ -1,12 +1,12 @@
 [Unit]
-Description=linkManager - administracion de links
+Description=linkManager - links administration
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 User=www-data
 Group=www-data
-# Rutas por defecto; cambialas si tu instalación usa otras.
+# Default paths; change them if your installation uses others.
 Environment=LM_WEB_ROOT=/var/www/linkmanager
 Environment=LM_DATA=/var/lib/linkmanager/links.json
 Environment=LM_BACKUP_DIR=/var/backups/linkmanager

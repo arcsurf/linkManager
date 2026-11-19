@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Instalador de linkManager para Debian/Ubuntu (nginx + systemd).
-# Uso: sudo ./install.sh
-# Es idempotente: no sobrescribe links, página ni contraseña ya existentes.
+# linkManager installer for Debian/Ubuntu (nginx + systemd).
+# Usage: sudo ./install.sh
+# It is idempotent: it does not overwrite existing links, page or password.
 set -euo pipefail
 
 WEB_ROOT=/var/www/linkmanager
@@ -10,13 +10,13 @@ DATA_DIR=/var/lib/linkmanager
 BACKUP_DIR=/var/backups/linkmanager
 SRC=$(cd "$(dirname "$0")" && pwd)
 
-[ "$(id -u)" -eq 0 ] || { echo "Ejecutalo como root (sudo ./install.sh)"; exit 1; }
+[ "$(id -u)" -eq 0 ] || { echo "Run it as root (sudo ./install.sh)"; exit 1; }
 
-echo "==> Instalando dependencias"
+echo "==> Installing dependencies"
 apt-get update -q
 DEBIAN_FRONTEND=noninteractive apt-get install -yq nginx python3 openssl openssh-client
 
-echo "==> Copiando la aplicación"
+echo "==> Copying the application"
 install -d -m 755 "$APP_DIR"
 install -m 644 "$SRC/app.py" "$APP_DIR/app.py"
 install -d -o www-data -g www-data -m 750 "$DATA_DIR" "$BACKUP_DIR"
@@ -24,7 +24,7 @@ install -d -o www-data -g www-data -m 755 "$WEB_ROOT" "$WEB_ROOT/images" "$WEB_R
 install -o www-data -g www-data -m 644 "$SRC/admin/index.html" "$WEB_ROOT/admin/index.html"
 echo ok > "$WEB_ROOT/admin/logout.txt"
 chown www-data:www-data "$WEB_ROOT/admin/logout.txt"
-# Credencial ficticia que usa el botón "Salir" para pisar la contraseña guardada en el navegador
+# Dummy credential used by the "Log out" button to overwrite the password stored in the browser
 printf 'logout:%s\n' "$(printf 'logout\n' | openssl passwd -6 -stdin)" > "$DATA_DIR/htpasswd-logout"
 chown www-data:www-data "$DATA_DIR/htpasswd-logout"
 chmod 640 "$DATA_DIR/htpasswd-logout"
@@ -45,12 +45,12 @@ if [ ! -f "$DATA_DIR/htpasswd" ]; then
     chmod 640 "$DATA_DIR/htpasswd"
 fi
 
-echo "==> Configurando systemd y nginx"
+echo "==> Configuring systemd and nginx"
 install -m 644 "$SRC/deploy/linkmanager.service" /etc/systemd/system/linkmanager.service
 if [ ! -f /etc/nginx/sites-available/linkmanager ]; then
     install -m 644 "$SRC/deploy/nginx-site.conf" /etc/nginx/sites-available/linkmanager
     ln -sf /etc/nginx/sites-available/linkmanager /etc/nginx/sites-enabled/linkmanager
-    # El sitio por defecto de nginx también escucha en el puerto 80
+    # The nginx default site also listens on port 80
     rm -f /etc/nginx/sites-enabled/default
 fi
 nginx -t
@@ -59,15 +59,15 @@ systemctl enable --now linkmanager
 systemctl restart linkmanager
 systemctl reload nginx
 
-# Genera la página con los links actuales
+# Generate the page with the current links
 sleep 1
 runuser -u www-data -- env LM_WEB_ROOT="$WEB_ROOT" LM_DATA="$DATA_DIR/links.json" \
     LM_BACKUP_DIR="$BACKUP_DIR" python3 -I -c \
     "import sys; sys.path.insert(0, '$APP_DIR'); import app; app.save(app.load())"
 
 echo
-echo "linkManager instalado: http://$(hostname -I | awk '{print $1}')/  (panel en /admin/)"
+echo "linkManager installed: http://$(hostname -I | awk '{print $1}')/  (panel at /admin/)"
 if [ -n "$PASS" ]; then
-    echo "Usuario: admin   Contraseña: $PASS"
-    echo "Cambiala desde el panel (sección 'Cambiar contraseña')."
+    echo "User: admin   Password: $PASS"
+    echo "Change it from the panel (Settings → 'Change the administrator password')."
 fi

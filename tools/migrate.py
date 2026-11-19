@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Importa una página de links estática ya existente a linkManager.
+"""Imports an existing static links page into linkManager.
 
-Busca las tarjetas con el formato:
+Looks for cards with this format:
 
     <article class="aplicacion">
-        <a href="URL"><img src="./images/ICONO"><h2>NOMBRE</h2><p>DESCRIPCION</p></a>
+        <a href="URL"><img src="./images/ICON"><h2>NAME</h2><p>DESCRIPTION</p></a>
     </article>
 
-las guarda en LM_DATA y reemplaza el bloque de tarjetas (desde la primera
-<section class="aplicaciones"> hasta </main>) por los marcadores LINKS.
-Usa las mismas variables de entorno LM_* que app.py. Hacé un backup antes.
+stores them in LM_DATA and replaces the block of cards (from the first
+<section class="aplicaciones"> to </main>) with the LINKS markers.
+It uses the same LM_* environment variables as app.py. Make a backup first.
 """
 import html
 import json
@@ -24,7 +24,7 @@ import app  # noqa: E402
 
 page = open(app.INDEX).read()
 if app.START in page:
-    sys.exit("La página ya tiene los marcadores LINKS: no hace falta migrar")
+    sys.exit("The page already has the LINKS markers: there is nothing to migrate")
 
 card = re.compile(
     r'<article class="aplicacion">\s*<a href="([^"]*)"[^>]*>\s*'
@@ -33,7 +33,7 @@ card = re.compile(
 links = [{"id": uuid.uuid4().hex[:8], "nombre": html.unescape(n), "descripcion": html.unescape(d),
           "url": html.unescape(u), "icono": i} for u, i, n, d in card.findall(page)]
 if not links:
-    sys.exit("No se encontraron tarjetas para migrar")
+    sys.exit("No cards to migrate were found")
 
 i = page.index('<section class="aplicaciones">')
 j = page.index("</main>")
@@ -45,4 +45,4 @@ with open(app.DATA, "w") as f:
 with open(app.INDEX, "w") as f:
     f.write(page)
 app.save(links)
-print(f"Migrados {len(links)} links:", ", ".join(l["nombre"] for l in links))
+print(f"Migrated {len(links)} links:", ", ".join(l["nombre"] for l in links))

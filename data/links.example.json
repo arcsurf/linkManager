@@ -1,8 +1,8 @@
 [
   {
-    "id": "ejemplo1",
-    "nombre": "Ejemplo",
-    "descripcion": "Link de ejemplo, editalo o borralo desde /admin/",
+    "id": "example1",
+    "nombre": "Example",
+    "descripcion": "Example link, edit or delete it from /admin/",
     "url": "https://example.com/",
     "icono": "link.svg"
   }

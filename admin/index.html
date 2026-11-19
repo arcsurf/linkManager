@@ -1,71 +1,72 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Administrar links</title>
+    <title>Manage links</title>
     <style>
         body { margin: 0; font-family: Arial, sans-serif; background: #0b1a33; color: #fff; }
         header { background: #102a47; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
         header h1 { margin: 0; font-size: 22px; }
         header nav { display: flex; gap: 16px; }
+        header nav a.active { color: #fff; font-weight: bold; text-decoration: none; border-bottom: 2px solid #66c0f4; }
         a { color: #66c0f4; }
         main { max-width: 1000px; margin: 0 auto; padding: 20px 16px; }
         .panel { background: #153b5b; border-radius: 10px; padding: 16px; margin-bottom: 20px; }
         h2 { margin: 0 0 12px; color: #66c0f4; font-size: 18px; }
         h3 { margin: 16px 0 8px; font-size: 14px; color: #c8d8e8; font-weight: normal; }
         label { display: block; margin: 10px 0 4px; font-size: 14px; color: #c8d8e8; }
-        input[type=text], input[type=url], input[type=password], select { width: 100%; box-sizing: border-box; padding: 8px; border-radius: 6px; border: 1px solid #2b5a80; background: #0b1a33; color: #fff; font-size: 14px; }
+        input[type=text], input[type=url], input[type=password], input[type=number], select { width: 100%; box-sizing: border-box; padding: 8px; border-radius: 6px; border: 1px solid #2b5a80; background: #0b1a33; color: #fff; font-size: 14px; }
+        textarea { width: 100%; box-sizing: border-box; padding: 8px; border-radius: 6px; border: 1px solid #2b5a80; background: #0b1a33; color: #fff; font: 12px monospace; resize: vertical; }
         .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
         .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 16px; }
-        .icono-box { display: flex; gap: 12px; align-items: flex-start; }
-        .icono-box > img:not([src]) { visibility: hidden; }
-        .icono-box > img { width: 64px; height: 64px; object-fit: contain; background: #0b1a33; border-radius: 8px; padding: 4px; flex: none; }
+        .icon-box { display: flex; gap: 12px; align-items: flex-start; }
+        .icon-box > img:not([src]) { visibility: hidden; }
+        .icon-box > img { width: 64px; height: 64px; object-fit: contain; background: #0b1a33; border-radius: 8px; padding: 4px; flex: none; }
         button { cursor: pointer; border: 0; border-radius: 6px; padding: 8px 14px; font-size: 14px; background: #2b5a80; color: #fff; }
         button:hover { filter: brightness(1.2); }
-        button.primario { background: #1f8a4c; }
-        button.peligro { background: #a83232; }
+        button.primary { background: #1f8a4c; }
+        button.danger { background: #a83232; }
         button:disabled { opacity: .4; cursor: default; }
-        .acciones { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
-        .busqueda-cab { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-        .busqueda-cab button { padding: 5px 10px; font-size: 13px; }
-        #estado-busqueda { font-size: 13px; color: #c8d8e8; }
-        #resultados { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
-        .opcion { background: #0b1a33; border: 2px solid transparent; border-radius: 8px; padding: 8px 4px; text-align: center; cursor: pointer; font-size: 11px; color: #c8d8e8; }
-        .opcion:hover { border-color: #2b5a80; }
-        .opcion.elegida { border-color: #1f8a4c; background: #10301f; }
-        .opcion img { width: 56px; height: 56px; object-fit: contain; display: block; margin: 0 auto 6px; }
-        .opcion .titulo { color: #fff; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .actions { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+        .search-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        .search-head button { padding: 5px 10px; font-size: 13px; }
+        #search-status { font-size: 13px; color: #c8d8e8; }
+        #results { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+        .option { background: #0b1a33; border: 2px solid transparent; border-radius: 8px; padding: 8px 4px; text-align: center; cursor: pointer; font-size: 11px; color: #c8d8e8; }
+        .option:hover { border-color: #2b5a80; }
+        .option.chosen { border-color: #1f8a4c; background: #10301f; }
+        .option img { width: 56px; height: 56px; object-fit: contain; display: block; margin: 0 auto 6px; }
+        .option .title { color: #fff; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         table { width: 100%; border-collapse: collapse; }
         td { padding: 8px 6px; border-top: 1px solid #2b5a80; vertical-align: middle; font-size: 14px; }
         td img { width: 40px; height: 40px; object-fit: contain; }
         td.url { word-break: break-all; color: #c8d8e8; font-size: 12px; }
         td.btns { white-space: nowrap; text-align: right; }
         td.btns button { padding: 6px 9px; margin-left: 2px; }
-        tr.seccion td { background: #0f2f4a; color: #66c0f4; font-weight: bold; font-size: 16px; }
-        .form-seccion { display: flex; gap: 8px; margin-bottom: 12px; }
-        .form-seccion input { flex: 1; }
-        .dns { margin-top: 14px; border: 1px solid #2b5a80; border-radius: 8px; padding: 10px 12px 12px; }
-        .dns legend { padding: 0 6px; color: #66c0f4; font-size: 14px; }
+        td .sub { font-size: 12px; color: #c8d8e8; }
+        td .dns { font-size: 12px; color: #66c0f4; }
+        tr.section td { background: #0f2f4a; color: #66c0f4; font-weight: bold; font-size: 16px; }
+        .section-form { display: flex; gap: 8px; margin-bottom: 12px; }
+        .section-form input { flex: 1; }
+        .dns-box { margin-top: 14px; border: 1px solid #2b5a80; border-radius: 8px; padding: 10px 12px 12px; }
+        .dns-box legend { padding: 0 6px; color: #66c0f4; font-size: 14px; }
         .check { display: flex; gap: 8px; align-items: center; margin: 4px 0; font-size: 14px; color: #c8d8e8; cursor: pointer; }
         .check input { margin: 0; }
-        .nota { font-size: 12px; color: #9fb6cc; margin: 6px 0 0; }
-        #dns-tipo { color: #66c0f4; }
-        #msg { position: fixed; bottom: 16px; right: 16px; padding: 12px 16px; border-radius: 8px; display: none; max-width: 80vw; }
-        header nav a.activa { color: #fff; font-weight: bold; text-decoration: none; border-bottom: 2px solid #66c0f4; }
+        .note { font-size: 12px; color: #9fb6cc; margin: 6px 0 0; }
         .sep { color: #2b5a80; }
-        .vacio { color: #9fb6cc; font-size: 14px; padding: 8px 0; }
-        td .sub { font-size: 12px; color: #c8d8e8; }
-        #int-campos .check { margin-top: 12px; }
-        #int-resultado.ok { color: #6fdc9b; }
-        #int-instrucciones { white-space: pre-line; background: #0f2f4a; border-radius: 6px; padding: 8px 10px; margin-top: 10px; }
-        textarea { width: 100%; box-sizing: border-box; padding: 8px; border-radius: 6px; border: 1px solid #2b5a80; background: #0b1a33; color: #fff; font: 12px monospace; resize: vertical; }
-        input[type=number] { width: 100%; box-sizing: border-box; padding: 8px; border-radius: 6px; border: 1px solid #2b5a80; background: #0b1a33; color: #fff; font-size: 14px; }
-        .clave-acciones { display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap; font-size: 13px; color: #6fdc9b; }
-        .clave-acciones button { padding: 5px 10px; font-size: 13px; }
-        .publica { margin-top: 8px; }
-        .publica textarea { color: #c8d8e8; }
-        #int-resultado.error { color: #ff8a8a; }
+        .empty { color: #9fb6cc; font-size: 14px; padding: 8px 0; }
+        #dns-type { color: #66c0f4; }
+        #int-fields .check { margin-top: 12px; }
+        #int-instructions { white-space: pre-line; background: #0f2f4a; border-radius: 6px; padding: 8px 10px; margin-top: 10px; }
+        #int-result.ok { color: #6fdc9b; }
+        #int-result.error { color: #ff8a8a; }
+        .key-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap; font-size: 13px; color: #6fdc9b; }
+        .key-actions button { padding: 5px 10px; font-size: 13px; }
+        .public-key { margin-top: 8px; }
+        .public-key textarea { color: #c8d8e8; }
+        .language { max-width: 320px; }
+        #msg { position: fixed; bottom: 16px; right: 16px; padding: 12px 16px; border-radius: 8px; display: none; max-width: 80vw; white-space: pre-line; }
         #msg.ok { background: #1f8a4c; display: block; }
         #msg.error { background: #a83232; display: block; }
         @media (max-width: 640px) {
@@ -77,139 +78,148 @@
 </head>
 <body>
 <header>
-    <h1>Administrar links</h1>
+    <h1 data-i18n="page.title">Manage links</h1>
     <nav>
-        <a href="#links" data-vista="links">Links</a>
-        <a href="#configuracion" data-vista="configuracion">Configuración</a>
+        <a href="#links" data-view="links" data-i18n="nav.links">Links</a>
+        <a href="#settings" data-view="settings" data-i18n="nav.settings">Settings</a>
         <span class="sep">|</span>
-        <a href="/" target="_blank">Ver página &rarr;</a>
-        <a href="#" id="salir" title="Cerrar sesión">Salir</a>
+        <a href="/" target="_blank" data-i18n="nav.view_page">View page →</a>
+        <a href="#" id="logout" data-i18n="nav.logout" data-i18n-title="nav.logout_title">Log out</a>
     </nav>
 </header>
 <main>
-<div class="vista" id="vista-links">
+<div class="view" id="view-links">
     <section class="panel">
-        <h2 id="titulo-form">Nuevo link</h2>
+        <h2 id="form-title">New link</h2>
         <form id="form">
             <div class="row">
                 <div>
-                    <label for="nombre">Nombre *</label>
-                    <input type="text" id="nombre" required maxlength="300" autocomplete="off">
+                    <label for="name" data-i18n="link.name">Name *</label>
+                    <input type="text" id="name" required maxlength="300" autocomplete="off">
                 </div>
                 <div>
-                    <label for="url">URL *</label>
-                    <input type="url" id="url" required placeholder="https://servicio.ejemplo/">
+                    <label for="url" data-i18n="link.url">URL *</label>
+                    <input type="url" id="url" required data-i18n-placeholder="link.url_placeholder">
                 </div>
             </div>
-            <label for="descripcion">Descripción</label>
-            <input type="text" id="descripcion" maxlength="300">
-            <label for="seccion">Sección</label>
-            <select id="seccion"></select>
+            <label for="description" data-i18n="link.description">Description</label>
+            <input type="text" id="description" maxlength="300">
+            <label for="section" data-i18n="link.section">Section</label>
+            <select id="section"></select>
 
-            <fieldset class="dns" id="dns-box">
-                <legend>Registro DNS</legend>
-                <p class="nota" id="dns-off" hidden>No hay servidores DNS configurados. Agregalos en <a href="#configuracion">Configuración</a> para crear el nombre del link desde acá.</p>
-                <div id="dns-elegir">
-                    <label for="dns-servidor">Crear un registro DNS para este link en</label>
-                    <select id="dns-servidor"></select>
+            <fieldset class="dns-box" id="dns-box">
+                <legend data-i18n="dns.legend">DNS record</legend>
+                <p class="note" id="dns-none" hidden><span data-i18n="dns.none_before">No DNS servers are configured. Add them in</span> <a href="#settings" data-i18n="nav.settings">Settings</a> <span data-i18n="dns.none_after">to create the link's name from here.</span></p>
+                <div id="dns-choose">
+                    <label for="dns-server" data-i18n="dns.create_in">Create a DNS record for this link in</label>
+                    <select id="dns-server"></select>
                 </div>
-                <div id="dns-campos" hidden>
+                <div id="dns-fields" hidden>
                     <div class="row">
                         <div>
-                            <label for="dns-dominio">Dominio con el que se va a resolver *</label>
-                            <input type="text" id="dns-dominio" maxlength="253" placeholder="app.home.arpa" autocomplete="off" spellcheck="false">
+                            <label for="dns-domain" data-i18n="dns.domain">Domain it will resolve as *</label>
+                            <input type="text" id="dns-domain" maxlength="253" placeholder="app.home.arpa" autocomplete="off" spellcheck="false">
                         </div>
                         <div>
-                            <label for="dns-destino">IP o nombre de destino *</label>
-                            <input type="text" id="dns-destino" maxlength="253" placeholder="192.0.2.50 o servidor.home.arpa" autocomplete="off" spellcheck="false">
+                            <label for="dns-target" data-i18n="dns.target">Target IP or name *</label>
+                            <input type="text" id="dns-target" maxlength="253" data-i18n-placeholder="dns.target_placeholder" autocomplete="off" spellcheck="false">
                         </div>
                     </div>
-                    <p class="nota">Se va a crear: <span id="dns-tipo">—</span></p>
-                    <label class="check"><input type="checkbox" id="dns-url" checked> Usar este dominio en la URL del link</label>
+                    <p class="note"><span data-i18n="dns.will_create">Will be created:</span> <span id="dns-type">—</span></p>
+                    <label class="check"><input type="checkbox" id="dns-use-url" checked> <span data-i18n="dns.use_in_url">Use this domain in the link URL</span></label>
                 </div>
             </fieldset>
 
-            <label for="icono">Icono</label>
-            <div class="icono-box">
+            <label for="icon" data-i18n="icon.label">Icon</label>
+            <div class="icon-box">
                 <img id="preview" alt="">
                 <div style="flex:1">
-                    <select id="icono"></select>
-                    <label for="archivo">o subir uno propio (png, svg, jpg, webp, gif, ico &mdash; máx. 2 MB)</label>
-                    <input type="file" id="archivo" accept=".png,.svg,.jpg,.jpeg,.webp,.gif,.ico">
+                    <select id="icon"></select>
+                    <label for="upload" data-i18n="icon.upload">or upload your own (png, svg, jpg, webp, gif, ico — max. 2 MB)</label>
+                    <input type="file" id="upload" accept=".png,.svg,.jpg,.jpeg,.webp,.gif,.ico">
                 </div>
             </div>
 
-            <div class="busqueda-cab">
-                <h3>o elegir uno de internet: <span id="estado-busqueda">escribí el nombre de la aplicación</span></h3>
-                <button type="button" id="buscar">Buscar</button>
+            <div class="search-head">
+                <h3><span data-i18n="icon.internet">or pick one from the internet:</span> <span id="search-status"></span></h3>
+                <button type="button" id="search" data-i18n="icon.search">Search</button>
             </div>
-            <div id="resultados"></div>
+            <div id="results"></div>
 
-            <div class="acciones">
-                <button type="submit" class="primario" id="guardar">Agregar</button>
-                <button type="button" id="cancelar" hidden>Cancelar edición</button>
+            <div class="actions">
+                <button type="submit" class="primary" id="save"></button>
+                <button type="button" id="cancel" data-i18n="form.cancel" hidden>Cancel editing</button>
             </div>
         </form>
     </section>
 
     <section class="panel">
-        <h2>Links y secciones</h2>
-        <form id="form-seccion" class="form-seccion">
-            <input type="text" id="titulo-seccion" placeholder="Título de la nueva sección (divisor)" maxlength="200" required>
-            <button type="submit" class="primario">Agregar sección</button>
+        <h2 data-i18n="list.title">Links and sections</h2>
+        <form id="section-form" class="section-form">
+            <input type="text" id="section-title" data-i18n-placeholder="section.title_placeholder" maxlength="200" required>
+            <button type="submit" class="primary" data-i18n="section.add">Add section</button>
         </form>
-        <table><tbody id="lista"></tbody></table>
+        <table><tbody id="list"></tbody></table>
     </section>
 </div>
 
-<div class="vista" id="vista-configuracion" hidden>
-    <section class="panel">
-        <h2>Integraciones DNS</h2>
-        <p class="nota">Servidores DNS en los que linkManager puede crear el nombre de un link al darlo de alta.</p>
-        <table><tbody id="lista-int"></tbody></table>
+<div class="view" id="view-settings" hidden>
+    <section class="panel" id="language">
+        <h2 data-i18n="language.title">Language</h2>
+        <div class="language">
+            <label for="language-select" data-i18n="language.label">Panel language</label>
+            <select id="language-select"></select>
+        </div>
+        <p class="note" data-i18n="language.note">Applies to the panel and to the server messages.</p>
+    </section>
 
-        <h3 id="titulo-int">Nueva integración</h3>
-        <form id="form-int" autocomplete="off">
+    <section class="panel">
+        <h2 data-i18n="int.title">DNS integrations</h2>
+        <p class="note" data-i18n="int.note">DNS servers where linkManager can create a link's name when it is added.</p>
+        <table><tbody id="int-list"></tbody></table>
+
+        <h3 id="int-form-title">New integration</h3>
+        <form id="int-form" autocomplete="off">
             <div class="row">
                 <div>
-                    <label for="int-tipo">Tipo de servidor</label>
-                    <select id="int-tipo"></select>
+                    <label for="int-type" data-i18n="int.type">Server type</label>
+                    <select id="int-type"></select>
                 </div>
                 <div>
-                    <label for="int-nombre">Nombre *</label>
-                    <input type="text" id="int-nombre" required maxlength="100" placeholder="Pi-hole de casa">
+                    <label for="int-name" data-i18n="int.name">Name *</label>
+                    <input type="text" id="int-name" required maxlength="100" data-i18n-placeholder="int.name_placeholder">
                 </div>
             </div>
-            <p class="nota" id="int-instrucciones" hidden></p>
-            <div id="int-campos"></div>
-            <div class="acciones">
-                <button type="submit" class="primario" id="int-guardar">Agregar integración</button>
-                <button type="button" id="int-probar">Probar conexión</button>
-                <button type="button" id="int-cancelar" hidden>Cancelar edición</button>
+            <p class="note" id="int-instructions" hidden></p>
+            <div id="int-fields"></div>
+            <div class="actions">
+                <button type="submit" class="primary" id="int-save"></button>
+                <button type="button" id="int-test" data-i18n="int.test">Test connection</button>
+                <button type="button" id="int-cancel" data-i18n="form.cancel" hidden>Cancel editing</button>
             </div>
-            <p class="nota" id="int-resultado"></p>
+            <p class="note" id="int-result"></p>
         </form>
     </section>
 
     <section class="panel" id="password">
-        <h2>Cambiar contraseña del administrador</h2>
-        <form id="form-pass">
+        <h2 data-i18n="password.title">Change the administrator password</h2>
+        <form id="password-form">
             <div class="row3">
                 <div>
-                    <label for="pass-actual">Contraseña actual</label>
-                    <input type="password" id="pass-actual" required autocomplete="current-password">
+                    <label for="pass-current" data-i18n="password.current">Current password</label>
+                    <input type="password" id="pass-current" required autocomplete="current-password">
                 </div>
                 <div>
-                    <label for="pass-nueva">Nueva (mín. 8 caracteres)</label>
-                    <input type="password" id="pass-nueva" required minlength="8" autocomplete="new-password">
+                    <label for="pass-new" data-i18n="password.new">New (min. 8 characters)</label>
+                    <input type="password" id="pass-new" required minlength="8" autocomplete="new-password">
                 </div>
                 <div>
-                    <label for="pass-repetir">Repetir nueva</label>
-                    <input type="password" id="pass-repetir" required minlength="8" autocomplete="new-password">
+                    <label for="pass-repeat" data-i18n="password.repeat">Repeat new</label>
+                    <input type="password" id="pass-repeat" required minlength="8" autocomplete="new-password">
                 </div>
             </div>
-            <div class="acciones">
-                <button type="submit" class="primario">Cambiar contraseña</button>
+            <div class="actions">
+                <button type="submit" class="primary" data-i18n="password.change">Change password</button>
             </div>
         </form>
     </section>
@@ -218,60 +228,316 @@
 <div id="msg"></div>
 
 <script>
+// Texts of the panel in every language. Keys used with t("...") or data-i18n*.
+// tools/check_translations.py checks that both languages have the same keys.
+const I18N = {
+"en": {
+    "page.title": "Manage links",
+    "nav.links": "Links",
+    "nav.settings": "Settings",
+    "nav.view_page": "View page →",
+    "nav.logout": "Log out",
+    "nav.logout_title": "Close the session",
+    "link.new": "New link",
+    "link.edit_title": "Edit: {name}",
+    "link.name": "Name *",
+    "link.url": "URL *",
+    "link.url_placeholder": "https://service.example/",
+    "link.description": "Description",
+    "link.section": "Section",
+    "link.section_home": "Home (no title)",
+    "dns.legend": "DNS record",
+    "dns.none_before": "No DNS servers are configured. Add them in",
+    "dns.none_after": "to create the link's name from here.",
+    "dns.create_in": "Create a DNS record for this link in",
+    "dns.no_record": "Do not create a DNS record",
+    "dns.domain": "Domain it will resolve as *",
+    "dns.target": "Target IP or name *",
+    "dns.target_placeholder": "192.0.2.50 or server.home.arpa",
+    "dns.will_create": "Will be created:",
+    "dns.record": "{type} record",
+    "dns.unsupported": "(⚠ {server} does not support {type}: use an IP)",
+    "dns.use_in_url": "Use this domain in the link URL",
+    "dns.fill": "For the DNS record, fill in the domain and the target IP or name",
+    "icon.label": "Icon",
+    "icon.choose_existing": "— choose an existing icon —",
+    "icon.upload": "or upload your own (png, svg, jpg, webp, gif, ico — max. 2 MB)",
+    "icon.internet": "or pick one from the internet:",
+    "icon.search": "Search",
+    "icon.type_name": "type the application name",
+    "icon.press_search": "press Search to see icons from the internet",
+    "icon.searching": "searching \"{q}\"…",
+    "icon.results": "{count} options for \"{q}\" (click to choose)",
+    "icon.no_results": "no results for \"{q}\"",
+    "icon.error": "error: {error}",
+    "icon.too_big": "The icon is larger than 2 MB",
+    "icon.required": "Choose an icon: existing, uploaded or from the internet",
+    "form.add": "Add",
+    "form.save": "Save changes",
+    "form.cancel": "Cancel editing",
+    "form.saved": "Changes saved",
+    "form.added": "\"{name}\" added",
+    "form.added_dns": "\"{name}\" added and {domain} → {target} created in {server}",
+    "list.title": "Links and sections",
+    "list.up": "Move up",
+    "list.down": "Move down",
+    "list.edit": "Edit",
+    "list.delete": "Delete",
+    "list.rename": "Rename",
+    "list.rename_section": "Rename section",
+    "list.delete_section": "Delete section",
+    "section.title_placeholder": "New section title (divider)",
+    "section.add": "Add section",
+    "section.prompt": "New section title:",
+    "section.renamed": "Section renamed",
+    "section.added": "Section \"{title}\" added at the end. Choose it in \"Section\" when adding links.",
+    "delete.section_confirm": "Delete the section \"{title}\"? Its links are not deleted: they move to the previous section.",
+    "delete.link_confirm": "Delete the link \"{name}\"?",
+    "delete.also_dns": "Its DNS record {domain} → {target} will also be deleted.",
+    "delete.also_dns_on": "Its DNS record {domain} → {target} on {server} will also be deleted.",
+    "delete.force_confirm": "{error}\n\nDelete the link anyway? The DNS record will stay on the server and you will have to delete it by hand.",
+    "delete.done": "\"{name}\" deleted",
+    "delete.done_dns": "\"{name}\" and its DNS record {domain} deleted",
+    "delete.done_dns_missing": "\"{name}\" deleted (its DNS record was no longer on the server)",
+    "delete.done_dns_kept": "\"{name}\" deleted; the DNS record {domain} stayed on the server",
+    "api.invalid_response": "Invalid response ({status})",
+    "language.title": "Language",
+    "language.label": "Panel language",
+    "language.note": "Applies to the panel and to the server messages.",
+    "language.saved": "Language changed",
+    "int.title": "DNS integrations",
+    "int.note": "DNS servers where linkManager can create a link's name when it is added.",
+    "int.empty": "There are no integrations yet. Add the first one with the form below.",
+    "int.new": "New integration",
+    "int.edit_title": "Edit: {name}",
+    "int.type": "Server type",
+    "int.name": "Name *",
+    "int.name_placeholder": "Home Pi-hole",
+    "int.add": "Add integration",
+    "int.test": "Test connection",
+    "int.test_button": "Test",
+    "int.test_title": "Test the connection",
+    "int.records": "Records it can create: {records}",
+    "int.secret_kept": "•••••• saved (leave it empty to keep it)",
+    "int.key_kept": "Saved key (leave it empty to keep it)",
+    "int.delete_confirm": "Delete the integration \"{name}\"?\nThe DNS records it already created on the server are not touched.",
+    "int.deleted": "Integration \"{name}\" deleted",
+    "int.testing": "Testing connection…",
+    "int.testing_name": "Testing \"{name}\"…",
+    "int.saved": "Integration saved",
+    "int.added": "Integration \"{name}\" added",
+    "int.saved_test_failed": "✘ Saved, but the test failed: {error}",
+    "key.generate": "Generate key pair",
+    "key.generate_title": "Generate a new ed25519 key",
+    "key.generate_other": "Generate another",
+    "key.paste_own": "Paste my own key",
+    "key.paste_own_title": "Use an existing private key",
+    "key.generated": "✔ New key generated: it is saved when you save the integration.",
+    "key.public_new": "Public key: add it to the server's ~/.ssh/authorized_keys (on OpenWrt, System → Administration → SSH-Keys)",
+    "key.public_saved": "Saved public key",
+    "key.public_saved_hint": "Saved public key: it must be in the server's authorized_keys",
+    "key.copy": "Copy public key",
+    "key.copy_title": "Copy to the clipboard",
+    "key.copied": "Public key copied",
+    "key.selected": "Selected: copy it with Ctrl+C",
+    "password.title": "Change the administrator password",
+    "password.current": "Current password",
+    "password.new": "New (min. 8 characters)",
+    "password.repeat": "Repeat new",
+    "password.change": "Change password",
+    "password.mismatch": "The new passwords do not match",
+    "password.changed": "Password changed. The browser will ask for the new password on the next action."
+},
+"es": {
+    "page.title": "Administrar links",
+    "nav.links": "Links",
+    "nav.settings": "Configuración",
+    "nav.view_page": "Ver página →",
+    "nav.logout": "Salir",
+    "nav.logout_title": "Cerrar sesión",
+    "link.new": "Nuevo link",
+    "link.edit_title": "Editar: {name}",
+    "link.name": "Nombre *",
+    "link.url": "URL *",
+    "link.url_placeholder": "https://servicio.ejemplo/",
+    "link.description": "Descripción",
+    "link.section": "Sección",
+    "link.section_home": "Inicio (sin título)",
+    "dns.legend": "Registro DNS",
+    "dns.none_before": "No hay servidores DNS configurados. Agregalos en",
+    "dns.none_after": "para crear el nombre del link desde acá.",
+    "dns.create_in": "Crear un registro DNS para este link en",
+    "dns.no_record": "No crear registro DNS",
+    "dns.domain": "Dominio con el que se va a resolver *",
+    "dns.target": "IP o nombre de destino *",
+    "dns.target_placeholder": "192.0.2.50 o servidor.home.arpa",
+    "dns.will_create": "Se va a crear:",
+    "dns.record": "registro {type}",
+    "dns.unsupported": "(⚠ {server} no admite {type}: usá una IP)",
+    "dns.use_in_url": "Usar este dominio en la URL del link",
+    "dns.fill": "Para el DNS completá el dominio y la IP o nombre de destino",
+    "icon.label": "Icono",
+    "icon.choose_existing": "— elegir icono existente —",
+    "icon.upload": "o subir uno propio (png, svg, jpg, webp, gif, ico — máx. 2 MB)",
+    "icon.internet": "o elegir uno de internet:",
+    "icon.search": "Buscar",
+    "icon.type_name": "escribí el nombre de la aplicación",
+    "icon.press_search": "pulsá Buscar para ver iconos de internet",
+    "icon.searching": "buscando \"{q}\"…",
+    "icon.results": "{count} opciones para \"{q}\" (clic para elegir)",
+    "icon.no_results": "sin resultados para \"{q}\"",
+    "icon.error": "error: {error}",
+    "icon.too_big": "El icono supera 2 MB",
+    "icon.required": "Elegí un icono: existente, subido o de internet",
+    "form.add": "Agregar",
+    "form.save": "Guardar cambios",
+    "form.cancel": "Cancelar edición",
+    "form.saved": "Cambios guardados",
+    "form.added": "\"{name}\" agregado",
+    "form.added_dns": "\"{name}\" agregado y {domain} → {target} creado en {server}",
+    "list.title": "Links y secciones",
+    "list.up": "Subir",
+    "list.down": "Bajar",
+    "list.edit": "Editar",
+    "list.delete": "Borrar",
+    "list.rename": "Renombrar",
+    "list.rename_section": "Renombrar sección",
+    "list.delete_section": "Borrar sección",
+    "section.title_placeholder": "Título de la nueva sección (divisor)",
+    "section.add": "Agregar sección",
+    "section.prompt": "Nuevo título de la sección:",
+    "section.renamed": "Sección renombrada",
+    "section.added": "Sección \"{title}\" agregada al final. Elegila en \"Sección\" al agregar links.",
+    "delete.section_confirm": "¿Borrar la sección \"{title}\"? Sus links no se borran: pasan a la sección anterior.",
+    "delete.link_confirm": "¿Borrar el link \"{name}\"?",
+    "delete.also_dns": "También se va a borrar su registro DNS {domain} → {target}.",
+    "delete.also_dns_on": "También se va a borrar su registro DNS {domain} → {target} en {server}.",
+    "delete.force_confirm": "{error}\n\n¿Borrar el link igual? El registro DNS va a quedar en el servidor y vas a tener que borrarlo a mano.",
+    "delete.done": "\"{name}\" borrado",
+    "delete.done_dns": "\"{name}\" y su registro DNS {domain} borrados",
+    "delete.done_dns_missing": "\"{name}\" borrado (su registro DNS ya no estaba en el servidor)",
+    "delete.done_dns_kept": "\"{name}\" borrado; el registro DNS {domain} quedó en el servidor",
+    "api.invalid_response": "Respuesta inválida ({status})",
+    "language.title": "Idioma",
+    "language.label": "Idioma del panel",
+    "language.note": "Se aplica al panel y a los mensajes del servidor.",
+    "language.saved": "Idioma cambiado",
+    "int.title": "Integraciones DNS",
+    "int.note": "Servidores DNS en los que linkManager puede crear el nombre de un link al darlo de alta.",
+    "int.empty": "Todavía no hay integraciones. Agregá la primera con el formulario de abajo.",
+    "int.new": "Nueva integración",
+    "int.edit_title": "Editar: {name}",
+    "int.type": "Tipo de servidor",
+    "int.name": "Nombre *",
+    "int.name_placeholder": "Pi-hole de casa",
+    "int.add": "Agregar integración",
+    "int.test": "Probar conexión",
+    "int.test_button": "Probar",
+    "int.test_title": "Probar la conexión",
+    "int.records": "Registros que puede crear: {records}",
+    "int.secret_kept": "•••••• guardada (dejala vacía para no cambiarla)",
+    "int.key_kept": "Clave guardada (dejalo vacío para no cambiarla)",
+    "int.delete_confirm": "¿Borrar la integración \"{name}\"?\nLos registros DNS que ya creó en el servidor no se tocan.",
+    "int.deleted": "Integración \"{name}\" borrada",
+    "int.testing": "Probando conexión…",
+    "int.testing_name": "Probando \"{name}\"…",
+    "int.saved": "Integración guardada",
+    "int.added": "Integración \"{name}\" agregada",
+    "int.saved_test_failed": "✘ Guardada, pero la prueba falló: {error}",
+    "key.generate": "Generar par de claves",
+    "key.generate_title": "Generar una clave ed25519 nueva",
+    "key.generate_other": "Generar otra",
+    "key.paste_own": "Pegar mi propia clave",
+    "key.paste_own_title": "Usar una clave privada existente",
+    "key.generated": "✔ Clave nueva generada: se guarda al guardar la integración.",
+    "key.public_new": "Clave pública: agregala en ~/.ssh/authorized_keys del servidor (o en OpenWrt, System → Administration → SSH-Keys)",
+    "key.public_saved": "Clave pública guardada",
+    "key.public_saved_hint": "Clave pública guardada: tiene que estar en authorized_keys del servidor",
+    "key.copy": "Copiar clave pública",
+    "key.copy_title": "Copiar al portapapeles",
+    "key.copied": "Clave pública copiada",
+    "key.selected": "Seleccionada: copiala con Ctrl+C",
+    "password.title": "Cambiar contraseña del administrador",
+    "password.current": "Contraseña actual",
+    "password.new": "Nueva (mín. 8 caracteres)",
+    "password.repeat": "Repetir nueva",
+    "password.change": "Cambiar contraseña",
+    "password.mismatch": "Las contraseñas nuevas no coinciden",
+    "password.changed": "Contraseña cambiada. El navegador te va a pedir la nueva contraseña en la próxima acción."
+}
+};
+
 const $ = id => document.getElementById(id);
-// Origen del icono elegido: "existente" (select), "archivo" (subido) o "remoto" (internet)
-let links = [], editando = null, archivo = null, remoto = null, iconoTocado = false;
+let lang = "en";
 
-function aviso(texto, tipo = "ok") {
+// Text in the current language; {placeholders} are replaced with vars.
+function t(key, vars = {}) {
+    const text = (I18N[lang] || I18N.en)[key] ?? I18N.en[key] ?? key;
+    return text.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
+}
+
+// Texts of the static HTML (data-i18n, data-i18n-placeholder, data-i18n-title).
+function applyStaticTexts() {
+    document.documentElement.lang = lang;
+    document.title = t("page.title");
+    document.querySelectorAll("[data-i18n]").forEach(el => el.textContent = t(el.dataset.i18n));
+    document.querySelectorAll("[data-i18n-placeholder]").forEach(el => el.placeholder = t(el.dataset.i18nPlaceholder));
+    document.querySelectorAll("[data-i18n-title]").forEach(el => el.title = t(el.dataset.i18nTitle));
+}
+
+// Icon source: existing (select), uploaded file or remote (internet)
+let links = [], editing = null, uploaded = null, remote = null, iconTouched = false;
+
+function notify(text, kind = "ok") {
     const m = $("msg");
-    m.textContent = texto; m.className = tipo;
-    clearTimeout(aviso.t); aviso.t = setTimeout(() => m.className = "", 4000);
+    m.textContent = text; m.className = kind;
+    clearTimeout(notify.timer); notify.timer = setTimeout(() => m.className = "", 4000);
 }
 
-async function api(metodo, ruta, cuerpo) {
-    const r = await fetch("/api/" + ruta, {
-        method: metodo,
-        headers: cuerpo ? {"Content-Type": "application/json"} : {},
-        body: cuerpo ? JSON.stringify(cuerpo) : undefined,
+async function api(method, path, body) {
+    const r = await fetch("/api/" + path, {
+        method,
+        headers: body ? {"Content-Type": "application/json"} : {},
+        body: body ? JSON.stringify(body) : undefined,
     });
-    const datos = await r.json().catch(() => ({error: "Respuesta inválida (" + r.status + ")"}));
-    if (!r.ok) throw Object.assign(new Error(datos.error || r.statusText), {status: r.status, datos});
-    return datos;
+    const data = await r.json().catch(() => ({error: t("api.invalid_response", {status: r.status})}));
+    if (!r.ok) throw Object.assign(new Error(data.error || r.statusText), {status: r.status, data});
+    return data;
 }
 
-function celda(texto, clase) {
+function cell(text, cls) {
     const td = document.createElement("td");
-    if (clase) td.className = clase;
-    td.textContent = texto;
+    if (cls) td.className = cls;
+    td.textContent = text;
     return td;
 }
 
-function boton(texto, titulo, fn, clase, deshabilitado) {
+function button(text, title, fn, cls, disabled) {
     const b = document.createElement("button");
-    b.type = "button"; b.textContent = texto; b.title = titulo; b.onclick = fn;
-    if (clase) b.className = clase;
-    b.disabled = !!deshabilitado;
+    b.type = "button"; b.textContent = text; b.title = title; b.onclick = fn;
+    if (cls) b.className = cls;
+    b.disabled = !!disabled;
     return b;
 }
 
-function dibujar() {
-    const tb = $("lista");
+function drawLinks() {
+    const tb = $("list");
     tb.replaceChildren();
     links.forEach((l, i) => {
         const tr = document.createElement("tr");
-        const flechas = [
-            boton("↑", "Subir", () => mover(l, -1), "", i === 0),
-            boton("↓", "Bajar", () => mover(l, 1), "", i === links.length - 1),
+        const arrows = [
+            button("↑", t("list.up"), () => move(l, -1), "", i === 0),
+            button("↓", t("list.down"), () => move(l, 1), "", i === links.length - 1),
         ];
         if (l.tipo === "seccion") {
-            tr.className = "seccion";
-            const td = celda("§ " + l.titulo);
+            tr.className = "section";
+            const td = cell("§ " + l.titulo);
             td.colSpan = 3;
             const btns = document.createElement("td");
             btns.className = "btns";
-            btns.append(...flechas,
-                boton("Renombrar", "Renombrar sección", () => renombrarSeccion(l)),
-                boton("Borrar", "Borrar sección", () => borrar(l), "peligro"));
+            btns.append(...arrows,
+                button(t("list.rename"), t("list.rename_section"), () => renameSection(l)),
+                button(t("list.delete"), t("list.delete_section"), () => remove(l), "danger"));
             tr.append(td, btns);
             tb.appendChild(tr);
             return;
@@ -280,545 +546,591 @@ function dibujar() {
         const img = document.createElement("img");
         img.src = "/images/" + encodeURIComponent(l.icono); img.alt = "";
         tdImg.appendChild(img);
-        const tdNombre = celda(l.nombre);
+        const tdName = cell(l.nombre);
         const small = document.createElement("div");
-        small.style.cssText = "font-size:12px;color:#c8d8e8";
+        small.className = "sub";
         small.textContent = l.descripcion;
-        tdNombre.appendChild(small);
+        tdName.appendChild(small);
         if (l.dns) {
             const dns = document.createElement("div");
-            dns.style.cssText = "font-size:12px;color:#66c0f4";
+            dns.className = "dns";
             dns.textContent = `DNS: ${l.dns.dominio} → ${l.dns.destino}` + (l.dns.servidor ? ` (${l.dns.servidor})` : "");
-            tdNombre.appendChild(dns);
+            tdName.appendChild(dns);
         }
         const btns = document.createElement("td");
         btns.className = "btns";
         btns.append(
-            ...flechas,
-            boton("Editar", "Editar", () => editar(l)),
-            boton("Borrar", "Borrar", () => borrar(l), "peligro"),
+            ...arrows,
+            button(t("list.edit"), t("list.edit"), () => edit(l)),
+            button(t("list.delete"), t("list.delete"), () => remove(l), "danger"),
         );
-        tr.append(tdImg, tdNombre, celda(l.url, "url"), btns);
+        tr.append(tdImg, tdName, cell(l.url, "url"), btns);
         tb.appendChild(tr);
     });
 }
 
-async function cargarIconos(seleccionado) {
-    const iconos = await api("GET", "iconos");
-    const s = $("icono");
-    s.replaceChildren(new Option("— elegir icono existente —", ""), ...iconos.map(n => new Option(n, n)));
-    s.value = seleccionado || "";
-    previsualizar();
+async function loadIcons(selected) {
+    const names = await api("GET", "iconos");
+    const s = $("icon");
+    s.replaceChildren(new Option(t("icon.choose_existing"), ""), ...names.map(n => new Option(n, n)));
+    s.value = selected || "";
+    preview();
 }
 
-function previsualizar() {
+function preview() {
     const p = $("preview");
-    if (remoto) p.src = remoto.url;
-    else if (archivo) p.src = archivo.data;
-    else if ($("icono").value) p.src = "/images/" + encodeURIComponent($("icono").value);
+    if (remote) p.src = remote.url;
+    else if (uploaded) p.src = uploaded.data;
+    else if ($("icon").value) p.src = "/images/" + encodeURIComponent($("icon").value);
     else p.removeAttribute("src");
-    document.querySelectorAll(".opcion").forEach(o => o.classList.toggle("elegida", !!remoto && o.dataset.url === remoto.url));
+    document.querySelectorAll(".option").forEach(o => o.classList.toggle("chosen", !!remote && o.dataset.url === remote.url));
 }
 
-// --- Búsqueda de iconos en internet ---
-let busquedaId = 0, temporizador = null;
+// --- Online icon search ---
+let searchId = 0, searchTimer = null, searchState = {key: "icon.type_name", vars: {}};
 
-async function buscarIconos() {
-    const q = $("nombre").value.trim();
-    const id = ++busquedaId;
+function setSearchStatus(key, vars = {}) {
+    searchState = {key, vars};
+    $("search-status").textContent = t(key, vars);
+}
+
+async function searchIcons() {
+    const q = $("name").value.trim();
+    const id = ++searchId;
     if (q.length < 2) {
-        $("resultados").replaceChildren();
-        $("estado-busqueda").textContent = "escribí el nombre de la aplicación";
+        $("results").replaceChildren();
+        setSearchStatus("icon.type_name");
         return;
     }
-    $("estado-busqueda").textContent = `buscando "${q}"…`;
+    setSearchStatus("icon.searching", {q});
     try {
         const res = await api("GET", "buscar-icono?q=" + encodeURIComponent(q));
-        if (id !== busquedaId) return;  // llegó una búsqueda más nueva
-        $("estado-busqueda").textContent = res.length
-            ? `${res.length} opciones para "${q}" (clic para elegir)`
-            : `sin resultados para "${q}"`;
-        $("resultados").replaceChildren(...res.map(r => {
+        if (id !== searchId) return;  // a newer search arrived
+        if (res.length) setSearchStatus("icon.results", {count: res.length, q});
+        else setSearchStatus("icon.no_results", {q});
+        $("results").replaceChildren(...res.map(r => {
             const d = document.createElement("div");
-            d.className = "opcion"; d.dataset.url = r.url; d.title = `${r.titulo} — ${r.fuente}`;
+            d.className = "option"; d.dataset.url = r.url; d.title = `${r.titulo} — ${r.fuente}`;
             const img = document.createElement("img");
             img.src = r.url; img.alt = r.titulo; img.loading = "lazy";
             img.onerror = () => d.remove();
-            const t = document.createElement("div");
-            t.className = "titulo"; t.textContent = r.titulo;
-            const f = document.createElement("div");
-            f.textContent = r.fuente;
-            d.append(img, t, f);
+            const title = document.createElement("div");
+            title.className = "title"; title.textContent = r.titulo;
+            const source = document.createElement("div");
+            source.textContent = r.fuente;
+            d.append(img, title, source);
             d.onclick = () => {
-                remoto = remoto && remoto.url === r.url ? null : r;
-                archivo = null; $("archivo").value = ""; iconoTocado = true;
-                previsualizar();
+                remote = remote && remote.url === r.url ? null : r;
+                uploaded = null; $("upload").value = ""; iconTouched = true;
+                preview();
             };
             return d;
         }));
-        previsualizar();
+        preview();
     } catch (e) {
-        if (id === busquedaId) $("estado-busqueda").textContent = "error: " + e.message;
+        if (id === searchId) setSearchStatus("icon.error", {error: e.message});
     }
 }
 
-$("nombre").oninput = () => {
-    clearTimeout(temporizador);
-    temporizador = setTimeout(buscarIconos, 600);
+$("name").oninput = () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(searchIcons, 600);
 };
-$("buscar").onclick = buscarIconos;
+$("search").onclick = searchIcons;
 
-// --- Alta / baja / modificación ---
-async function cargar() {
+// --- Add / delete / edit ---
+async function load() {
     links = await api("GET", "links");
-    dibujar();
-    const s = $("seccion"), actual = s.value;
-    s.replaceChildren(new Option("Inicio (sin título)", ""),
+    drawLinks();
+    fillSections();
+}
+
+function fillSections() {
+    const s = $("section"), current = s.value;
+    s.replaceChildren(new Option(t("link.section_home"), ""),
         ...links.filter(l => l.tipo === "seccion").map(l => new Option(l.titulo, l.id)));
-    s.value = [...s.options].some(o => o.value === actual) ? actual : "";
+    s.value = [...s.options].some(o => o.value === current) ? current : "";
 }
 
-function seccionDe(item) {
-    let actual = "";
+function sectionOf(item) {
+    let current = "";
     for (const l of links) {
-        if (l === item) return actual;
-        if (l.tipo === "seccion") actual = l.id;
+        if (l === item) return current;
+        if (l.tipo === "seccion") current = l.id;
     }
-    return actual;
+    return current;
 }
 
-async function renombrarSeccion(l) {
-    const titulo = prompt("Nuevo título de la sección:", l.titulo);
-    if (titulo === null || !titulo.trim()) return;
-    try { await api("PUT", "links/" + l.id, {titulo}); aviso("Sección renombrada"); await cargar(); }
-    catch (e) { aviso(e.message, "error"); }
+async function renameSection(l) {
+    const title = prompt(t("section.prompt"), l.titulo);
+    if (title === null || !title.trim()) return;
+    try { await api("PUT", "links/" + l.id, {titulo: title}); notify(t("section.renamed")); await load(); }
+    catch (e) { notify(e.message, "error"); }
 }
 
-$("form-seccion").onsubmit = async ev => {
+$("section-form").onsubmit = async ev => {
     ev.preventDefault();
-    const titulo = $("titulo-seccion").value;
+    const title = $("section-title").value;
     try {
-        await api("POST", "links", {tipo: "seccion", titulo});
-        $("form-seccion").reset();
-        aviso(`Sección "${titulo}" agregada al final. Elegila en "Sección" al agregar links.`);
-        await cargar();
-    } catch (e) { aviso(e.message, "error"); }
+        await api("POST", "links", {tipo: "seccion", titulo: title});
+        $("section-form").reset();
+        notify(t("section.added", {title}));
+        await load();
+    } catch (e) { notify(e.message, "error"); }
 };
 
-function limpiar() {
-    editando = null; archivo = null; remoto = null; iconoTocado = false;
-    const seccion = $("seccion").value;  // se mantiene para cargar varios links seguidos
-    $("form").reset();
-    $("seccion").value = seccion;
-    $("resultados").replaceChildren();
-    $("estado-busqueda").textContent = "escribí el nombre de la aplicación";
-    $("titulo-form").textContent = "Nuevo link";
-    $("guardar").textContent = "Agregar";
-    $("cancelar").hidden = true;
-    destinoTocado = dominioTocado = false;
-    actualizarDns();
-    previsualizar();
+// Form title and buttons depend on whether a link is being edited.
+function drawFormState() {
+    const l = links.find(x => x.id === editing);
+    $("form-title").textContent = l ? t("link.edit_title", {name: l.nombre}) : t("link.new");
+    $("save").textContent = editing ? t("form.save") : t("form.add");
+    $("cancel").hidden = !editing;
 }
 
-function editar(l) {
-    limpiar();
-    editando = l.id;
-    $("nombre").value = l.nombre; $("url").value = l.url; $("descripcion").value = l.descripcion;
-    $("icono").value = l.icono;
-    $("seccion").value = seccionDe(l);
-    $("titulo-form").textContent = "Editar: " + l.nombre;
-    $("guardar").textContent = "Guardar cambios";
-    $("cancelar").hidden = false;
-    $("estado-busqueda").textContent = "pulsá Buscar para ver iconos de internet";
-    actualizarDns();
-    previsualizar();
+function resetForm() {
+    editing = null; uploaded = null; remote = null; iconTouched = false;
+    const section = $("section").value;  // kept to add several links in a row
+    $("form").reset();
+    $("section").value = section;
+    $("results").replaceChildren();
+    setSearchStatus("icon.type_name");
+    drawFormState();
+    targetTouched = domainTouched = false;
+    updateDns();
+    preview();
+}
+
+function edit(l) {
+    resetForm();
+    editing = l.id;
+    $("name").value = l.nombre; $("url").value = l.url; $("description").value = l.descripcion;
+    $("icon").value = l.icono;
+    $("section").value = sectionOf(l);
+    drawFormState();
+    setSearchStatus("icon.press_search");
+    updateDns();
+    preview();
     window.scrollTo({top: 0, behavior: "smooth"});
 }
 
-async function borrar(l) {
-    const esSeccion = l.tipo === "seccion";
-    const pregunta = esSeccion
-        ? `¿Borrar la sección "${l.titulo}"? Sus links no se borran: pasan a la sección anterior.`
-        : `¿Borrar el link "${l.nombre}"?` + (l.dns
-            ? `\n\nTambién se va a borrar su registro DNS ${l.dns.dominio} → ${l.dns.destino}` +
-              (l.dns.servidor ? ` en ${l.dns.servidor}.` : ".")
-            : "");
-    if (!confirm(pregunta)) return;
+async function remove(l) {
+    const isSection = l.tipo === "seccion";
+    let question = isSection ? t("delete.section_confirm", {title: l.titulo}) : t("delete.link_confirm", {name: l.nombre});
+    if (!isSection && l.dns) {
+        const vars = {domain: l.dns.dominio, target: l.dns.destino, server: l.dns.servidor};
+        question += "\n\n" + (l.dns.servidor ? t("delete.also_dns_on", vars) : t("delete.also_dns", vars));
+    }
+    if (!confirm(question)) return;
     try {
         let r;
         try {
             r = await api("DELETE", "links/" + l.id);
         } catch (e) {
-            // Si falla el borrado en el servidor DNS, el link no se borra: ofrecer borrarlo igual.
-            if (!e.datos?.dns_fallo) throw e;
-            if (!confirm(`${e.message}\n\n¿Borrar el link igual? El registro DNS va a quedar en el servidor y vas a tener que borrarlo a mano.`)) return;
+            // If deleting on the DNS server fails, the link is kept: offer to delete it anyway.
+            if (!e.data?.dns_fallo) throw e;
+            if (!confirm(t("delete.force_confirm", {error: e.message}))) return;
             r = await api("DELETE", `links/${l.id}?forzar=1`);
             r.dns = "pendiente";
         }
-        if (editando === l.id) limpiar();
-        const nombre = esSeccion ? l.titulo : l.nombre;
-        aviso({borrado: `"${nombre}" y su registro DNS ${l.dns?.dominio} borrados`,
-               no_existia: `"${nombre}" borrado (su registro DNS ya no estaba en el servidor)`,
-               pendiente: `"${nombre}" borrado; el registro DNS ${l.dns?.dominio} quedó en el servidor`,
-              }[r.dns] || `"${nombre}" borrado`, r.dns === "pendiente" ? "error" : "ok");
-        await cargar();
-    } catch (e) { aviso(e.message, "error"); }
+        if (editing === l.id) resetForm();
+        const vars = {name: isSection ? l.titulo : l.nombre, domain: l.dns?.dominio};
+        const messages = {
+            borrado: t("delete.done_dns", vars),
+            no_existia: t("delete.done_dns_missing", vars),
+            pendiente: t("delete.done_dns_kept", vars),
+        };
+        notify(messages[r.dns] || t("delete.done", vars), r.dns === "pendiente" ? "error" : "ok");
+        await load();
+    } catch (e) { notify(e.message, "error"); }
 }
 
-async function mover(l, dir) {
-    try { links = await api("POST", `links/${l.id}/mover`, {dir}); dibujar(); }
-    catch (e) { aviso(e.message, "error"); }
+async function move(l, dir) {
+    try { links = await api("POST", `links/${l.id}/mover`, {dir}); drawLinks(); }
+    catch (e) { notify(e.message, "error"); }
 }
 
-$("icono").onchange = () => {
-    archivo = null; remoto = null; $("archivo").value = ""; iconoTocado = true;
-    previsualizar();
+$("icon").onchange = () => {
+    uploaded = null; remote = null; $("upload").value = ""; iconTouched = true;
+    preview();
 };
 
-$("archivo").onchange = () => {
-    const f = $("archivo").files[0];
-    if (!f) { archivo = null; return previsualizar(); }
-    if (f.size > 2 * 1024 * 1024) { aviso("El icono supera 2 MB", "error"); $("archivo").value = ""; return; }
+$("upload").onchange = () => {
+    const f = $("upload").files[0];
+    if (!f) { uploaded = null; return preview(); }
+    if (f.size > 2 * 1024 * 1024) { notify(t("icon.too_big"), "error"); $("upload").value = ""; return; }
     const r = new FileReader();
-    r.onload = () => { archivo = {nombre: f.name, data: r.result}; remoto = null; iconoTocado = true; previsualizar(); };
+    r.onload = () => { uploaded = {name: f.name, data: r.result}; remote = null; iconTouched = true; preview(); };
     r.readAsDataURL(f);
 };
 
-$("cancelar").onclick = limpiar;
+$("cancel").onclick = resetForm;
 
-// --- Registro DNS (solo en altas) ---
-let integraciones = [], tipos = [], destinoTocado = false, dominioTocado = false;
-const esIPv4 = s => /^(\d{1,3}\.){3}\d{1,3}$/.test(s);
-const esIP = s => esIPv4(s) || (s.includes(":") && /^[0-9a-f:.]+$/i.test(s));
+// --- DNS record (only when adding) ---
+let integrations = [], types = [], targetTouched = false, domainTouched = false;
+const isIPv4 = s => /^(\d{1,3}\.){3}\d{1,3}$/.test(s);
+const isIP = s => isIPv4(s) || (s.includes(":") && /^[0-9a-f:.]+$/i.test(s));
 
-function hostDe(url) {
+function hostOf(url) {
     try { return new URL(url).hostname.replace(/^\[|\]$/g, ""); } catch { return ""; }
 }
 
-function actualizarDns() {
-    $("dns-box").hidden = !!editando;
-    $("dns-off").hidden = integraciones.length > 0;
-    $("dns-elegir").hidden = integraciones.length === 0;
-    $("dns-campos").hidden = !$("dns-servidor").value;
-    const dom = $("dns-dominio").value.trim().toLowerCase(), dst = $("dns-destino").value.trim().toLowerCase();
-    const tipo = esIP(dst) ? (esIPv4(dst) ? "A" : "AAAA") : "CNAME";
-    const integ = integraciones.find(i => i.id === $("dns-servidor").value);
-    $("dns-tipo").textContent = !dom || !dst ? "—"
-        : `${tipo === "CNAME" ? "CNAME" : "registro " + tipo}  ${dom} → ${dst}` +
-          (integ && !integ.registros.includes(tipo) ? `  (⚠ ${integ.tipo_nombre} no admite ${tipo}: usá una IP)` : "");
+function updateDns() {
+    $("dns-box").hidden = !!editing;
+    $("dns-none").hidden = integrations.length > 0;
+    $("dns-choose").hidden = integrations.length === 0;
+    $("dns-fields").hidden = !$("dns-server").value;
+    const domain = $("dns-domain").value.trim().toLowerCase(), target = $("dns-target").value.trim().toLowerCase();
+    const type = isIP(target) ? (isIPv4(target) ? "A" : "AAAA") : "CNAME";
+    const integration = integrations.find(i => i.id === $("dns-server").value);
+    $("dns-type").textContent = !domain || !target ? "—"
+        : `${type === "CNAME" ? "CNAME" : t("dns.record", {type})}  ${domain} → ${target}` +
+          (integration && !integration.records.includes(type)
+              ? "  " + t("dns.unsupported", {server: integration.type_name, type}) : "");
 }
 
-// Sugerencias a partir de la URL: si apunta a una IP, esa es el destino;
-// si apunta a un nombre, ese es el dominio a crear.
+// Suggestions from the URL: an IP is the target; a name is the domain to create.
 $("url").addEventListener("input", () => {
-    const h = hostDe($("url").value);
+    const h = hostOf($("url").value);
     if (!h) return;
-    if (esIP(h)) { if (!destinoTocado) $("dns-destino").value = h; }
-    else if (!dominioTocado) $("dns-dominio").value = h;
-    actualizarDns();
+    if (isIP(h)) { if (!targetTouched) $("dns-target").value = h; }
+    else if (!domainTouched) $("dns-domain").value = h;
+    updateDns();
 });
-$("dns-destino").oninput = () => { destinoTocado = true; actualizarDns(); };
-$("dns-dominio").oninput = () => { dominioTocado = true; actualizarDns(); };
-$("dns-servidor").onchange = actualizarDns;
+$("dns-target").oninput = () => { targetTouched = true; updateDns(); };
+$("dns-domain").oninput = () => { domainTouched = true; updateDns(); };
+$("dns-server").onchange = updateDns;
 
-function llenarServidoresDns() {
-    const s = $("dns-servidor"), actual = s.value;
-    s.replaceChildren(new Option("No crear registro DNS", ""),
-        ...integraciones.map(i => new Option(i.nombre === i.tipo_nombre ? i.nombre : `${i.nombre} (${i.tipo_nombre})`, i.id)));
-    s.value = integraciones.some(i => i.id === actual) ? actual : "";
-    actualizarDns();
+function fillDnsServers() {
+    const s = $("dns-server"), current = s.value;
+    s.replaceChildren(new Option(t("dns.no_record"), ""),
+        ...integrations.map(i => new Option(i.nombre === i.type_name ? i.nombre : `${i.nombre} (${i.type_name})`, i.id)));
+    s.value = integrations.some(i => i.id === current) ? current : "";
+    updateDns();
 }
 
 $("form").onsubmit = async ev => {
     ev.preventDefault();
-    const cuerpo = {nombre: $("nombre").value, url: $("url").value, descripcion: $("descripcion").value,
-                    seccion: $("seccion").value};
-    if (remoto) cuerpo.icono_url = remoto.url;
-    else if (archivo) { cuerpo.icono_data = archivo.data; cuerpo.icono_nombre = archivo.nombre; }
-    else if ($("icono").value && (iconoTocado || !editando)) cuerpo.icono = $("icono").value;
-    if (!editando && !cuerpo.icono && !cuerpo.icono_url && !cuerpo.icono_data) {
-        return aviso("Elegí un icono: existente, subido o de internet", "error");
+    const body = {nombre: $("name").value, url: $("url").value, descripcion: $("description").value,
+                  seccion: $("section").value};
+    if (remote) body.icono_url = remote.url;
+    else if (uploaded) { body.icono_data = uploaded.data; body.icono_nombre = uploaded.name; }
+    else if ($("icon").value && (iconTouched || !editing)) body.icono = $("icon").value;
+    if (!editing && !body.icono && !body.icono_url && !body.icono_data) {
+        return notify(t("icon.required"), "error");
     }
-    if (!editando && $("dns-servidor").value) {
-        cuerpo.dns = {integracion: $("dns-servidor").value, dominio: $("dns-dominio").value, destino: $("dns-destino").value,
-                      usar_en_url: $("dns-url").checked};
-        if (!cuerpo.dns.dominio.trim() || !cuerpo.dns.destino.trim()) {
-            return aviso("Para el DNS completá el dominio y la IP o nombre de destino", "error");
-        }
+    if (!editing && $("dns-server").value) {
+        body.dns = {integracion: $("dns-server").value, dominio: $("dns-domain").value,
+                    destino: $("dns-target").value, usar_en_url: $("dns-use-url").checked};
+        if (!body.dns.dominio.trim() || !body.dns.destino.trim()) return notify(t("dns.fill"), "error");
     }
-    const nuevoIcono = !!(remoto || archivo);
-    $("guardar").disabled = true;
+    const newIcon = !!(remote || uploaded);
+    $("save").disabled = true;
     try {
-        let creado;
-        if (editando) await api("PUT", "links/" + editando, cuerpo);
-        else creado = await api("POST", "links", cuerpo);
-        aviso(editando ? "Cambios guardados"
-            : creado.dns ? `"${cuerpo.nombre}" agregado y ${creado.dns.dominio} → ${creado.dns.destino} creado en ${creado.dns.servidor}`
-            : `"${cuerpo.nombre}" agregado`);
-        limpiar();
-        if (nuevoIcono) await cargarIconos();
-        await cargar();
-    } catch (e) { aviso(e.message, "error"); }
-    finally { $("guardar").disabled = false; }
+        let created;
+        if (editing) await api("PUT", "links/" + editing, body);
+        else created = await api("POST", "links", body);
+        notify(editing ? t("form.saved")
+            : created.dns ? t("form.added_dns", {name: body.nombre, domain: created.dns.dominio,
+                                                target: created.dns.destino, server: created.dns.servidor})
+            : t("form.added", {name: body.nombre}));
+        resetForm();
+        if (newIcon) await loadIcons();
+        await load();
+    } catch (e) { notify(e.message, "error"); }
+    finally { $("save").disabled = false; }
 };
 
-// --- Vistas: Links / Configuración ---
-function mostrarVista() {
-    const vista = ["#configuracion", "#password"].includes(location.hash) ? "configuracion" : "links";
-    document.querySelectorAll(".vista").forEach(v => v.hidden = v.id !== "vista-" + vista);
-    document.querySelectorAll("header nav [data-vista]").forEach(a => a.classList.toggle("activa", a.dataset.vista === vista));
-    if (location.hash === "#password") $("password").scrollIntoView();
+// --- Views: Links / Settings ---
+function showView() {
+    const view = ["#settings", "#password", "#language"].includes(location.hash) ? "settings" : "links";
+    document.querySelectorAll(".view").forEach(v => v.hidden = v.id !== "view-" + view);
+    document.querySelectorAll("header nav [data-view]").forEach(a => a.classList.toggle("active", a.dataset.view === view));
+    if (["#password", "#language"].includes(location.hash)) $(location.hash.slice(1)).scrollIntoView();
 }
-window.addEventListener("hashchange", mostrarVista);
+window.addEventListener("hashchange", showView);
 
-// --- Integraciones ---
-let editandoInt = null;
+// --- Language ---
+async function loadSettings() {
+    const s = await api("GET", "settings");
+    lang = s.language in I18N ? s.language : "en";
+    $("language-select").replaceChildren(...Object.entries(s.languages).map(([code, name]) => new Option(name, code)));
+    $("language-select").value = lang;
+}
 
-async function cargarIntegraciones() {
-    if (!tipos.length) {
-        tipos = await api("GET", "integraciones/tipos");
-        const grupos = {};
-        for (const t of tipos) (grupos[t.grupo] ||= []).push(new Option(t.nombre, t.tipo));
-        $("int-tipo").replaceChildren(...Object.entries(grupos).map(([g, ops]) => {
-            const og = document.createElement("optgroup"); og.label = g; og.append(...ops); return og;
+// Redraws every text after a language change (the server also translates its own texts).
+async function redrawTexts() {
+    applyStaticTexts();
+    drawFormState();
+    setSearchStatus(searchState.key, searchState.vars);
+    drawLinks();
+    fillSections();
+    const selectedIcon = $("icon").value;
+    $("icon").options[0].text = t("icon.choose_existing");
+    $("icon").value = selectedIcon;
+    types = [];  // integration types come translated from the server
+    await loadIntegrations();
+    drawIntFormState();
+}
+
+$("language-select").onchange = async () => {
+    try {
+        const s = await api("PUT", "settings", {language: $("language-select").value});
+        lang = s.language;
+        await redrawTexts();
+        notify(t("language.saved"));
+    } catch (e) { notify(e.message, "error"); $("language-select").value = lang; }
+};
+
+// --- Integrations ---
+let editingInt = null;
+
+async function loadIntegrations() {
+    if (!types.length) {
+        types = await api("GET", "integraciones/tipos");
+        const groups = {};
+        for (const tp of types) (groups[tp.group] ||= []).push(new Option(tp.name, tp.type));
+        const selected = $("int-type").value;
+        $("int-type").replaceChildren(...Object.entries(groups).map(([g, options]) => {
+            const og = document.createElement("optgroup"); og.label = g; og.append(...options); return og;
         }));
-        dibujarCamposInt();
+        if (selected) $("int-type").value = selected;
+        const current = editingInt && integrations.find(i => i.id === editingInt);
+        drawIntFields(current || {});
     }
-    integraciones = await api("GET", "integraciones");
-    dibujarIntegraciones();
-    llenarServidoresDns();
+    integrations = await api("GET", "integraciones");
+    drawIntegrations();
+    fillDnsServers();
 }
 
-function dibujarIntegraciones() {
-    const tb = $("lista-int");
+function drawIntegrations() {
+    const tb = $("int-list");
     tb.replaceChildren();
-    if (!integraciones.length) {
-        const td = celda("Todavía no hay integraciones. Agregá la primera con el formulario de abajo.", "vacio");
+    if (!integrations.length) {
+        const td = cell(t("int.empty"), "empty");
         td.colSpan = 3;
         const tr = document.createElement("tr"); tr.appendChild(td); tb.appendChild(tr);
         return;
     }
-    for (const i of integraciones) {
+    for (const i of integrations) {
         const tr = document.createElement("tr");
-        const tdNombre = celda(i.nombre);
+        const tdName = cell(i.nombre);
         const sub = document.createElement("div");
-        sub.className = "sub"; sub.textContent = i.tipo_nombre;
-        tdNombre.appendChild(sub);
+        sub.className = "sub"; sub.textContent = i.type_name;
+        tdName.appendChild(sub);
         const btns = document.createElement("td");
         btns.className = "btns";
         btns.append(
-            boton("Probar", "Probar la conexión", ev => probarGuardada(i, ev.currentTarget)),
-            boton("Editar", "Editar", () => editarInt(i)),
-            boton("Borrar", "Borrar", () => borrarInt(i), "peligro"),
+            button(t("int.test_button"), t("int.test_title"), ev => testSaved(i, ev.currentTarget)),
+            button(t("list.edit"), t("list.edit"), () => editInt(i)),
+            button(t("list.delete"), t("list.delete"), () => removeInt(i), "danger"),
         );
-        tr.append(tdNombre, celda(i.resumen || "", "url"), btns);
+        tr.append(tdName, cell(i.summary || "", "url"), btns);
         tb.appendChild(tr);
     }
 }
 
-function tipoActual() { return tipos.find(t => t.tipo === $("int-tipo").value); }
+function currentType() { return types.find(tp => tp.type === $("int-type").value); }
 
-// Arma los campos según lo que pide cada tipo de servidor (URL, usuario, contraseña, API key, SSH...)
-let claveGenerada = null;
+// Builds the fields each server type asks for (URL, user, password, API key, SSH...)
+let generatedKey = null;
 
-function dibujarCamposInt(valores = {}) {
-    const t = tipoActual(), cont = $("int-campos");
-    cont.replaceChildren();
-    claveGenerada = null;
-    $("int-instrucciones").hidden = !t;
-    if (!t) return;
-    $("int-instrucciones").textContent = (t.instrucciones ? t.instrucciones + "\n" : "") +
-        "Registros que puede crear: " + t.registros.join(", ");
-    for (const c of t.campos) {
-        const id = "int-c-" + c.id;
+function drawIntFields(values = {}) {
+    const tp = currentType(), box = $("int-fields");
+    box.replaceChildren();
+    generatedKey = null;
+    $("int-instructions").hidden = !tp;
+    if (!tp) return;
+    $("int-instructions").textContent = (tp.instructions ? tp.instructions + "\n" : "") +
+        t("int.records", {records: tp.records.join(", ")});
+    for (const f of tp.fields) {
+        const id = "int-f-" + f.id;
         let input;
-        if (c.tipo === "checkbox") {
+        if (f.type === "checkbox") {
             const l = document.createElement("label"); l.className = "check";
             input = document.createElement("input"); input.type = "checkbox"; input.id = id;
-            input.checked = c.id in valores ? !!valores[c.id] : !!c.defecto;
-            l.append(input, " " + c.etiqueta);
-            cont.appendChild(l);
+            input.checked = f.id in values ? !!values[f.id] : !!f.default;
+            l.append(input, " " + f.label);
+            box.appendChild(l);
         } else {
             const l = document.createElement("label");
-            l.htmlFor = id; l.textContent = c.etiqueta + (c.requerido ? " *" : "");
-            cont.appendChild(l);
-            if (c.tipo === "select") {
+            l.htmlFor = id; l.textContent = f.label + (f.required ? " *" : "");
+            box.appendChild(l);
+            if (f.type === "select") {
                 input = document.createElement("select");
-                input.append(...c.opciones.map(([v, txt]) => new Option(txt, v)));
-                input.value = valores[c.id] || c.defecto || c.opciones[0][0];
-            } else if (c.tipo === "ssh_key") {
+                input.append(...f.options.map(([v, text]) => new Option(text, v)));
+                input.value = values[f.id] || f.default || f.options[0][0];
+            } else if (f.type === "ssh_key") {
                 input = document.createElement("textarea");
                 input.rows = 4; input.spellcheck = false;
-                input.placeholder = editandoInt && valores[c.id + "_cargado"]
-                    ? "Clave guardada (dejalo vacío para no cambiarla)"
-                    : "-----BEGIN OPENSSH PRIVATE KEY-----\n…";
+                input.placeholder = editingInt && values[f.id + "_set"]
+                    ? t("int.key_kept") : "-----BEGIN OPENSSH PRIVATE KEY-----\n…";
             } else {
                 input = document.createElement("input");
-                input.type = c.tipo === "password" ? "password" : c.tipo === "number" ? "number" : "text";
-                if (c.tipo === "number") { input.min = c.min ?? ""; input.max = c.max ?? ""; }
+                input.type = f.type === "password" ? "password" : f.type === "number" ? "number" : "text";
+                if (f.type === "number") { input.min = f.min ?? ""; input.max = f.max ?? ""; }
                 else { input.maxLength = 500; input.spellcheck = false; }
-                input.autocomplete = c.tipo === "password" ? "new-password" : "off";
-                input.placeholder = c.placeholder || "";
-                if (c.secreto && editandoInt && valores[c.id + "_cargado"]) {
-                    input.placeholder = "•••••• guardada (dejala vacía para no cambiarla)";
-                } else {
-                    input.value = valores[c.id] ?? c.defecto ?? "";
-                }
+                input.autocomplete = f.type === "password" ? "new-password" : "off";
+                input.placeholder = f.placeholder || "";
+                if (f.secret && editingInt && values[f.id + "_set"]) input.placeholder = t("int.secret_kept");
+                else input.value = values[f.id] ?? f.default ?? "";
             }
             input.id = id;
-            cont.appendChild(input);
-            if (c.tipo === "ssh_key") cont.appendChild(bloqueClave(input, valores.ssh_publica));
+            box.appendChild(input);
+            if (f.type === "ssh_key") box.appendChild(keyBlock(input, values.ssh_public_key));
         }
-        if (c.ayuda) {
-            const p = document.createElement("p"); p.className = "nota"; p.textContent = c.ayuda;
-            cont.appendChild(p);
+        if (f.help) {
+            const p = document.createElement("p"); p.className = "note"; p.textContent = f.help;
+            box.appendChild(p);
         }
     }
 }
 
-// Botón para generar un par de claves y recuadro con la clave pública para copiar al servidor
-function bloqueClave(textarea, publicaGuardada) {
+// Button to generate a key pair and box with the public key to copy to the server
+function keyBlock(textarea, savedPublic) {
     const div = document.createElement("div");
-    const acciones = document.createElement("div"); acciones.className = "clave-acciones";
-    const estado = document.createElement("span");
-    const publica = document.createElement("div"); publica.className = "publica";
-    const mostrarPublica = (texto, titulo) => {
-        publica.replaceChildren();
-        if (!texto) return;
-        const l = document.createElement("label"); l.textContent = titulo;
-        const ta = document.createElement("textarea"); ta.rows = 2; ta.readOnly = true; ta.value = texto;
-        const copiar = boton("Copiar clave pública", "Copiar al portapapeles", async () => {
-            try { await navigator.clipboard.writeText(texto); aviso("Clave pública copiada"); }
-            catch { ta.select(); aviso("Seleccionada: copiala con Ctrl+C"); }
+    const actions = document.createElement("div"); actions.className = "key-actions";
+    const state = document.createElement("span");
+    const pub = document.createElement("div"); pub.className = "public-key";
+    const showPublic = (text, title) => {
+        pub.replaceChildren();
+        if (!text) return;
+        const l = document.createElement("label"); l.textContent = title;
+        const ta = document.createElement("textarea"); ta.rows = 2; ta.readOnly = true; ta.value = text;
+        const copy = button(t("key.copy"), t("key.copy_title"), async () => {
+            try { await navigator.clipboard.writeText(text); notify(t("key.copied")); }
+            catch { ta.select(); notify(t("key.selected")); }
         });
-        copiar.style.marginTop = "6px";
-        publica.append(l, ta, copiar);
+        copy.style.marginTop = "6px";
+        pub.append(l, ta, copy);
     };
-    const generar = boton("Generar par de claves", "Generar una clave ed25519 nueva", async () => {
+    const generate = button(t("key.generate"), t("key.generate_title"), async () => {
         try {
             const k = await api("POST", "integraciones/generar-clave");
-            claveGenerada = k.privada;
+            generatedKey = k.privada;
             textarea.value = ""; textarea.hidden = true;
-            estado.textContent = "✔ Clave nueva generada: se guarda al guardar la integración.";
-            mostrarPublica(k.publica, "Clave pública: agregala en ~/.ssh/authorized_keys del servidor (o en OpenWrt, System → Administration → SSH-Keys)");
-            generar.textContent = "Generar otra";
-            otra.hidden = false;
-        } catch (e) { aviso(e.message, "error"); }
+            state.textContent = t("key.generated");
+            showPublic(k.publica, t("key.public_new"));
+            generate.textContent = t("key.generate_other");
+            own.hidden = false;
+        } catch (e) { notify(e.message, "error"); }
     });
-    const otra = boton("Pegar mi propia clave", "Usar una clave privada existente", () => {
-        claveGenerada = null; textarea.hidden = false; estado.textContent = ""; otra.hidden = true;
-        mostrarPublica(publicaGuardada, "Clave pública guardada");
-        generar.textContent = "Generar par de claves";
+    const own = button(t("key.paste_own"), t("key.paste_own_title"), () => {
+        generatedKey = null; textarea.hidden = false; state.textContent = ""; own.hidden = true;
+        showPublic(savedPublic, t("key.public_saved"));
+        generate.textContent = t("key.generate");
     });
-    otra.hidden = true;
-    acciones.append(generar, otra, estado);
-    div.append(acciones, publica);
-    mostrarPublica(publicaGuardada, "Clave pública guardada: tiene que estar en authorized_keys del servidor");
+    own.hidden = true;
+    actions.append(generate, own, state);
+    div.append(actions, pub);
+    showPublic(savedPublic, t("key.public_saved_hint"));
     return div;
 }
 
-function datosInt() {
-    const d = {tipo: $("int-tipo").value, nombre: $("int-nombre").value};
-    for (const c of tipoActual().campos) {
-        const el = $("int-c-" + c.id);
-        d[c.id] = c.tipo === "checkbox" ? el.checked : c.tipo === "ssh_key" ? (claveGenerada || el.value) : el.value;
+function intFormData() {
+    const d = {tipo: $("int-type").value, nombre: $("int-name").value};
+    for (const f of currentType().fields) {
+        const el = $("int-f-" + f.id);
+        d[f.id] = f.type === "checkbox" ? el.checked : f.type === "ssh_key" ? (generatedKey || el.value) : el.value;
     }
     return d;
 }
 
-function resultadoInt(texto, tipo) {
-    const p = $("int-resultado");
-    p.textContent = texto; p.className = "nota " + (tipo || "");
+function intResult(text, kind) {
+    const p = $("int-result");
+    p.textContent = text; p.className = "note " + (kind || "");
 }
 
-function limpiarInt() {
-    editandoInt = null;
-    $("form-int").reset();
-    $("int-tipo").disabled = false;
-    $("titulo-int").textContent = "Nueva integración";
-    $("int-guardar").textContent = "Agregar integración";
-    $("int-cancelar").hidden = true;
-    resultadoInt("");
-    dibujarCamposInt();
+function drawIntFormState() {
+    const i = integrations.find(x => x.id === editingInt);
+    $("int-form-title").textContent = i ? t("int.edit_title", {name: i.nombre}) : t("int.new");
+    $("int-save").textContent = editingInt ? t("form.save") : t("int.add");
+    $("int-cancel").hidden = !editingInt;
 }
 
-function editarInt(i) {
-    editandoInt = i.id;
-    $("int-tipo").value = i.tipo; $("int-tipo").disabled = true;
-    $("int-nombre").value = i.nombre;
-    $("titulo-int").textContent = "Editar: " + i.nombre;
-    $("int-guardar").textContent = "Guardar cambios";
-    $("int-cancelar").hidden = false;
-    resultadoInt("");
-    dibujarCamposInt(i);
-    $("titulo-int").scrollIntoView({behavior: "smooth"});
+function resetIntForm() {
+    editingInt = null;
+    $("int-form").reset();
+    $("int-type").disabled = false;
+    drawIntFormState();
+    intResult("");
+    drawIntFields();
 }
 
-async function borrarInt(i) {
-    if (!confirm(`¿Borrar la integración "${i.nombre}"?\nLos registros DNS que ya creó en el servidor no se tocan.`)) return;
+function editInt(i) {
+    editingInt = i.id;
+    $("int-type").value = i.tipo; $("int-type").disabled = true;
+    $("int-name").value = i.nombre;
+    drawIntFormState();
+    intResult("");
+    drawIntFields(i);
+    $("int-form-title").scrollIntoView({behavior: "smooth"});
+}
+
+async function removeInt(i) {
+    if (!confirm(t("int.delete_confirm", {name: i.nombre}))) return;
     try {
         await api("DELETE", "integraciones/" + i.id);
-        if (editandoInt === i.id) limpiarInt();
-        aviso(`Integración "${i.nombre}" borrada`);
-        await cargarIntegraciones();
-    } catch (e) { aviso(e.message, "error"); }
+        if (editingInt === i.id) resetIntForm();
+        notify(t("int.deleted", {name: i.nombre}));
+        await loadIntegrations();
+    } catch (e) { notify(e.message, "error"); }
 }
 
-async function probarGuardada(i, btn) {
+async function testSaved(i, btn) {
     btn.disabled = true;
-    try { aviso((await api("POST", `integraciones/${i.id}/probar`)).mensaje); }
-    catch (e) { aviso(e.message, "error"); }
+    try { notify((await api("POST", `integraciones/${i.id}/probar`)).mensaje); }
+    catch (e) { notify(e.message, "error"); }
     finally { btn.disabled = false; }
 }
 
-$("int-tipo").onchange = () => dibujarCamposInt();
-$("int-cancelar").onclick = limpiarInt;
+$("int-type").onchange = () => drawIntFields();
+$("int-cancel").onclick = resetIntForm;
 
-$("int-probar").onclick = async () => {
-    const d = datosInt();
-    if (editandoInt) d.id = editandoInt;
-    $("int-probar").disabled = true;
-    resultadoInt("Probando conexión…");
-    try { resultadoInt("✔ " + (await api("POST", "integraciones/probar", d)).mensaje, "ok"); }
-    catch (e) { resultadoInt("✘ " + e.message, "error"); }
-    finally { $("int-probar").disabled = false; }
+$("int-test").onclick = async () => {
+    const d = intFormData();
+    if (editingInt) d.id = editingInt;
+    $("int-test").disabled = true;
+    intResult(t("int.testing"));
+    try { intResult("✔ " + (await api("POST", "integraciones/probar", d)).mensaje, "ok"); }
+    catch (e) { intResult("✘ " + e.message, "error"); }
+    finally { $("int-test").disabled = false; }
 };
 
-$("form-int").onsubmit = async ev => {
+$("int-form").onsubmit = async ev => {
     ev.preventDefault();
-    const d = datosInt();
-    $("int-guardar").disabled = true;
+    const d = intFormData();
+    $("int-save").disabled = true;
     try {
-        const it = editandoInt ? await api("PUT", "integraciones/" + editandoInt, d)
-                               : await api("POST", "integraciones", d);
-        aviso(editandoInt ? "Integración guardada" : `Integración "${it.nombre}" agregada`);
-        limpiarInt();
-        await cargarIntegraciones();
-        // Prueba la conexión recién guardada para avisar si algo quedó mal
-        resultadoInt(`Probando "${it.nombre}"…`);
-        try { resultadoInt("✔ " + (await api("POST", `integraciones/${it.id}/probar`)).mensaje, "ok"); }
-        catch (e) { resultadoInt(`✘ Guardada, pero la prueba falló: ${e.message}`, "error"); }
-    } catch (e) { aviso(e.message, "error"); }
-    finally { $("int-guardar").disabled = false; }
+        const it = editingInt ? await api("PUT", "integraciones/" + editingInt, d)
+                              : await api("POST", "integraciones", d);
+        notify(editingInt ? t("int.saved") : t("int.added", {name: it.nombre}));
+        resetIntForm();
+        await loadIntegrations();
+        // Test the just saved integration to warn if something is wrong
+        intResult(t("int.testing_name", {name: it.nombre}));
+        try { intResult("✔ " + (await api("POST", `integraciones/${it.id}/probar`)).mensaje, "ok"); }
+        catch (e) { intResult(t("int.saved_test_failed", {error: e.message}), "error"); }
+    } catch (e) { notify(e.message, "error"); }
+    finally { $("int-save").disabled = false; }
 };
 
-// --- Contraseña ---
-$("form-pass").onsubmit = async ev => {
+// --- Password ---
+$("password-form").onsubmit = async ev => {
     ev.preventDefault();
-    const cuerpo = {actual: $("pass-actual").value, nueva: $("pass-nueva").value, repetir: $("pass-repetir").value};
-    if (cuerpo.nueva !== cuerpo.repetir) return aviso("Las contraseñas nuevas no coinciden", "error");
+    const body = {actual: $("pass-current").value, nueva: $("pass-new").value, repetir: $("pass-repeat").value};
+    if (body.nueva !== body.repetir) return notify(t("password.mismatch"), "error");
     try {
-        await api("POST", "password", cuerpo);
-        $("form-pass").reset();
-        alert("Contraseña cambiada. El navegador te va a pedir la nueva contraseña en la próxima acción.");
+        await api("POST", "password", body);
+        $("password-form").reset();
+        alert(t("password.changed"));
         location.reload();
-    } catch (e) { aviso(e.message, "error"); }
+    } catch (e) { notify(e.message, "error"); }
 };
 
 // --- Logout ---
-// Con auth_basic el navegador guarda la contraseña: para "cerrar sesión" se la
-// reemplaza por la credencial logout:logout, válida solo para /admin/logout.txt.
-$("salir").onclick = ev => {
+// With auth_basic the browser keeps the password: to "log out" it is replaced
+// with the logout:logout credential, only valid for /admin/logout.txt.
+$("logout").onclick = ev => {
     ev.preventDefault();
     const x = new XMLHttpRequest();
     x.open("GET", "/admin/logout.txt?" + Date.now(), true, "logout", "logout");
@@ -826,9 +1138,16 @@ $("salir").onclick = ev => {
     x.send();
 };
 
-mostrarVista();
-cargarIntegraciones().catch(e => aviso(e.message, "error"));
-cargarIconos().then(cargar).catch(e => aviso(e.message, "error"));
+(async () => {
+    try { await loadSettings(); } catch (e) { notify(e.message, "error"); }
+    applyStaticTexts();
+    drawFormState();
+    drawIntFormState();
+    setSearchStatus("icon.type_name");
+    showView();
+    loadIntegrations().catch(e => notify(e.message, "error"));
+    loadIcons().then(load).catch(e => notify(e.message, "error"));
+})();
 </script>
 </body>
 </html>

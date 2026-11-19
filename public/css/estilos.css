@@ -86,7 +86,7 @@ a {
     color: #ffffff;
 }
 
-/* Líneas a ambos lados del título del divisor */
+/* Lines on both sides of the divider title */
 .separador h2::before,
 .separador h2::after {
     content: "";
@@ -96,7 +96,7 @@ a {
     background-color: #2b5a80;
 }
 
-/* Botón de acceso al panel de administración */
+/* Button to open the admin panel */
 header {
     position: relative;
 }

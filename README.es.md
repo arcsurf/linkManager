@@ -10,6 +10,16 @@ La página pública es **HTML estático**. Cada vez que cambiás algo desde el p
 linkManager regenera `index.html`. Si el servicio está caído, la página se sigue
 viendo igual.
 
+## Capturas
+
+**Página de inicio**, con los links agrupados en secciones:
+
+![Página de inicio de linkManager](docs/screenshots/start-page.png)
+
+**Panel de administración**, donde se agregan, editan y ordenan links y secciones:
+
+![Panel de administración de linkManager](docs/screenshots/admin-panel.png)
+
 ## Funcionalidades
 
 - **ABM de links**: nombre, URL, descripción e icono. Las flechas ↑ ↓ cambian el orden.

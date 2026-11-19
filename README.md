@@ -9,6 +9,16 @@ The public page is **static HTML**. Every time you change something in the panel
 linkManager regenerates `index.html`. If the service is down, the page still
 looks the same.
 
+## Screenshots
+
+**Start page**, with the links grouped in sections:
+
+![linkManager start page](docs/screenshots/start-page.png)
+
+**Admin panel**, where links and sections are added, edited and reordered:
+
+![linkManager admin panel](docs/screenshots/admin-panel.png)
+
 ## Features
 
 - **Link management**: name, URL, description and icon. The ↑ ↓ arrows change the order.
